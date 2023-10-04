@@ -1,0 +1,9 @@
+[hosts]
+merkez
+
+[kube-masters]
+kube-ms
+
+[kube-workers]
+kube-worker-1
+kube-worker-2

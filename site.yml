@@ -1,0 +1,7 @@
+---
+  - name: Main installation
+    hosts: merkez
+    roles:
+      - base
+      - server
+      - kube
