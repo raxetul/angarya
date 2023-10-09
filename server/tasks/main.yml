@@ -1,0 +1,4 @@
+---
+- name: Raid mount task
+  ansible.builtin.include_tasks:
+    file: raid.yml

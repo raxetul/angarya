@@ -1,0 +1,12 @@
+---
+# tasks file for debian
+
+  - name: Echo partiton map()
+    ansible.builtin.debug:
+      msg: "{{ raid_partitions }}"
+
+
+  - name: Echo partiton mount points and ids
+    ansible.builtin.debug:
+      msg: "{{ item.key }} - {{ item.value }}"
+    with_dict: "{{ raid_partitions }}"
