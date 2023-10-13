@@ -1,0 +1,28 @@
+# Angarya
+Angarya means drudgery, angary.
+
+This is my collection ansible playbooks of my server installations.
+It includes several tasks in roles and feel free to what you need.
+
+# Dependencies
+A debian host with SSH key installed to root account.
+
+# Usage
+- Uncomment the part you need in main.yml files
+- Create a my-varibles.yml file from my-variables-sample.yml file according to your needs.
+- Run ansible-playbook:
+  ``` bash
+  ansible-playbook site.yml --extra-vars "@my-variables.yml" 
+  ```
+
+# Structure
+
+## Roles
+Roles are in the run order, see site.yml in the root.
+
+### Base
+Base package installations and arrangements mostly needed.!And 
+
+### Server
+Installation and arrangements for servers
+- Raid installation with mdadm 

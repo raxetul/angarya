@@ -1,9 +1,22 @@
 ---
 # tasks file for debian
+  - name: Install dependencies
+    ansible.builtin.apt:
+      pkg:
+      - mdadm
 
+  - name: Search RAID partitions
+    shell: mdadm --assemble --scan --verbose
 
-  - name: Echo partiton mount points and ids
-    ansible.builtin.debug:
-      msg: "{{ item.key }} - {{ item.value }}"
+  - name: Creates directory
+    file:
+      path: /root/temp
+      state: directory
+
+  - name: Echo partiton mount points and id
+    include_tasks: "raid/fstab.yml"
     with_dict: "{{ raid_partitions }}"
     when: raid_partitions is defined
+  
+  - name: Mount new partitions defined in fstab
+    shell: mdadm --assemble --scan --verbose

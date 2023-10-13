@@ -1,0 +1,7 @@
+raid_partitions:
+  - /media/depo: 
+      partition: "UUID=aaaaaaaa-ffff-1111-9999-1234567890cd"
+      file_system_type: ext4
+  - /media/second: 
+      partition: "/dev/sda1"
+      file_system_type: ntfs
