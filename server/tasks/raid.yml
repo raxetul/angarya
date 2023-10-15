@@ -7,16 +7,14 @@
 
   - name: Search RAID partitions
     shell: mdadm --assemble --scan --verbose
+    register: mdadm_result
+    failed_when: mdadm_result.rc != 2
 
-  - name: Creates directory
-    file:
-      path: /root/temp
-      state: directory
 
-  - name: Echo partiton mount points and id
+  - name: Add partitions to fstab
     include_tasks: "raid/fstab.yml"
     with_dict: "{{ raid_partitions }}"
     when: raid_partitions is defined
-  
-  - name: Mount new partitions defined in fstab
-    shell: mdadm --assemble --scan --verbose
+
+  - name: Mount all added partitions
+    shell: mount -a

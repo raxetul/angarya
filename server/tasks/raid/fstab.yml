@@ -1,0 +1,29 @@
+---
+- name: Testing partition mount
+  shell: grep -c "^{{ item.value.partition }}" /etc/fstab || true
+  register: test_fstab
+
+- name: Setting mount line
+  set_fact:
+    mount_line: "{{ item.value.partition }}\t{{ item.key }}\t{{ item.value.file_system_type }}\tdefaults\t0\t2"
+  when: test_fstab.stdout == "0"
+
+- name: Mount line
+  ansible.builtin.debug:
+    msg: "{{ mount_line }}"
+  when: test_fstab.stdout == "0"
+
+- name: Creating mount folder
+  file:
+    path: "{{ item.key }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0775
+  when: test_fstab.stdout == "0"  
+
+- name: Add mount line to fstab
+  lineinfile:
+    dest: /etc/fstab
+    line: "{{ mount_line }}"
+  when: test_fstab.stdout == "0"

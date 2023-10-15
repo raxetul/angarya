@@ -1,7 +1,3 @@
 ---
-
-
-# - name: Raid mount task
-#   ansible.builtin.include_tasks: raid.yml
-
-
+- name: Raid mount task
+  ansible.builtin.include_tasks: raid.yml
