@@ -21,8 +21,9 @@ A debian host with SSH key installed to root account.
 Roles are in the run order, see site.yml in the root.
 
 ### Base
-Base package installations and arrangements mostly needed.!And 
+Base package installations and arrangements mostly needed.
+See [Base README file](base/README.md)
 
 ### Server
 Installation and arrangements for servers
-- Raid installation with mdadm 
+

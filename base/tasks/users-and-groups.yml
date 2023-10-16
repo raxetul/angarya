@@ -1,0 +1,11 @@
+---
+# tasks file for debian 
+  - name: Adding groups
+    include_tasks: "users-and-groups/groups.yml"
+    with_dict : "{{ user_groups }}"
+    when: groups is defined
+
+  - name: Adding users
+    include_tasks: "users-and-groups/users.yml"
+    with_dict: "{{ users }}"
+    when: users is defined

@@ -5,3 +5,20 @@ raid_partitions:
   - /media/second: 
       partition: "/dev/sda1"
       file_system_type: ntfs
+
+groups:
+  - hitchhikers:
+    gid: 5000
+    
+
+users:
+  - alice:
+      fullname: "Alice INWONDERLAND"
+      uid: 1001
+  - bob:
+      fullname: "Bob SPONGE"
+      groups: "docker,tty,hitchhikers"
+  - rootless:
+      fullname: "Rootless"
+      groups: ""
+      uid: 2000

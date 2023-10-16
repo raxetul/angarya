@@ -1,0 +1,8 @@
+---
+- name: Ensure group exists
+  ansible.builtin.user:
+    name: "{{ item.key }}"
+    comment: "{{ item.value.fullname }}"
+    uid: "{{ item.value.uid }}"
+    groups: "{{ item.value.groups }}"
+    state: present

@@ -1,0 +1,6 @@
+---
+- name: Ensure group exists
+  ansible.builtin.group:
+    name: "{{ item.key }}"
+    gid: "{{ item.value.gid }}"
+    state: present

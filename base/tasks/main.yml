@@ -1,0 +1,19 @@
+---
+# tasks file for debian
+  - name: Install packages
+    ansible.builtin.apt:
+      pkg:
+        - build-essential
+        - curl
+        - fish
+        - git-all
+        - golang
+        - golang-doc
+        - gpg
+        - tldr
+        - tmux
+        - vim
+        - wget
+
+  - name: Users and groups task
+    ansible.builtin.include_tasks: users-and-groups.yml
