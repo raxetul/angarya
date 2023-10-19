@@ -10,7 +10,8 @@ No requirement is needed.
 Role Variables
 --------------
 See my-variables-sample file:
-- raid-partitions for mounting raid operations 
+- raid-partitions for mounting raid operations
+- Samba installation with cockpit-file-sharing which makes samba configuration management easy
 
 Dependencies
 ------------

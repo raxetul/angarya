@@ -1,3 +1,7 @@
 ---
 - name: Raid mount task
   ansible.builtin.include_tasks: raid.yml
+
+- name: Install samba
+  ansible.builtin.include_tasks: samba.yml
+  
