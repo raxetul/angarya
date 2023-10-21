@@ -4,11 +4,13 @@
     ansible.builtin.apt:
       pkg:
         - build-essential
+        - ca-certificates
         - curl
         - fish
         - git-all
         - golang
         - golang-doc
+        - gnupg
         - gpg
         - tldr
         - tmux

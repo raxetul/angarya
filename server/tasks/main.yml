@@ -4,4 +4,6 @@
 
 - name: Install samba
   ansible.builtin.include_tasks: samba.yml
-  
+
+- name: Install rootless docker
+  ansible.builtin.include_tasks: rootless-docker-installation.yml

@@ -5,4 +5,5 @@
     comment: "{{ item.value.fullname }}"
     uid: "{{ item.value.uid }}"
     groups: "{{ item.value.groups }}"
+    shell: /bin/bash
     state: present
