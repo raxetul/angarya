@@ -22,3 +22,4 @@ users:
       fullname: "Rootless"
       groups: ""
       uid: 2000
+      keyFile: "/home/local-user-name/.ssh/server-rootless.pub"

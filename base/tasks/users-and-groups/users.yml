@@ -1,5 +1,5 @@
 ---
-- name: Ensure group exists
+- name: Ensure user exists
   ansible.builtin.user:
     name: "{{ item.key }}"
     comment: "{{ item.value.fullname }}"
@@ -7,3 +7,21 @@
     groups: "{{ item.value.groups }}"
     shell: /bin/bash
     state: present
+
+- name: Add bashrc lines
+  become_user: "{{ item.key }}"
+  ansible.builtin.lineinfile:
+    path: "/home/{{ item.key }}/.bashrc"
+    regex: "{{ bash_line.regexp }}" 
+    line: "{{ bash_line.line }}" 
+  loop:
+    - { regexp: "^alias ll='ls -l'", line: "alias ll='ls -l'" }
+  loop_control:
+    loop_var: bash_line
+
+- name: Deploy SSH Public Key
+  ansible.posix.authorized_key:
+    user: "{{ item.key }}"
+    state: present
+    key: "{{ lookup('file', '{{ item.value.keyFile }}') }}"
+  when: item.value.keyFile is defined
