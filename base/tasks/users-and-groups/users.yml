@@ -4,9 +4,14 @@
     name: "{{ item.key }}"
     comment: "{{ item.value.fullname }}"
     uid: "{{ item.value.uid }}"
-    groups: "{{ item.value.groups }}"
     shell: /bin/bash
     state: present
+
+- name: Ensure user groups
+  ansible.builtin.user:
+    name: "{{ item.key }}"
+    groups: "{{ item.value.groups }}"
+  when: item.value.groups is defined
 
 - name: Add bashrc lines
   become_user: "{{ item.key }}"
