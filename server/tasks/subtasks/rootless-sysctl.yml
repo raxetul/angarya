@@ -1,0 +1,11 @@
+---
+- name: Testing sysctl line
+  shell: grep -c "^{{ item.key }}" /etc/sysctl.d/99-rootless.conf || true
+  register: test_sysctl
+
+- name: Adding sysctl line
+  lineinfile:
+    create: true
+    dest: /etc/sysctl.d/99-rootless.conf 
+    line: '{{ item.key }}={{ item.value }}'
+  when: test_sysctl.stdout == "0"

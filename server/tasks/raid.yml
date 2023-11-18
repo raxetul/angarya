@@ -12,7 +12,7 @@
 
 
   - name: Add partitions to fstab
-    include_tasks: "raid/fstab.yml"
+    include_tasks: "subtasks/fstab.yml"
     with_dict: "{{ raid_partitions }}"
     when: raid_partitions is defined
 
