@@ -12,10 +12,24 @@
         - golang-doc
         - gnupg
         - gpg
+        - hd-idle
+        - jq
         - tldr
         - tmux
         - vim
         - wget
+
+  - name: hd-idle configuration
+    ansible.builtin.lineinfile:
+      path: /etc/default/hd-idle
+      regex: "^#HD_IDLE_OPTS="
+      line: "HD_IDLE_OPTS=\"-i 180 -l /var/log/hd-idle.log\""
+  
+  - name: Enable hd-idle service
+    ansible.builtin.systemd:
+      name: hd-idle
+      state: started
+      enabled: true
 
   - name: Users and groups task
     ansible.builtin.include_tasks: users-and-groups.yml
