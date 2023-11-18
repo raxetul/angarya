@@ -1,4 +1,15 @@
 ---
+  - name: Setup DNS
+    ansible.builtin.lineinfile:
+      path: "/etc/resolv.conf"
+      regex: "{{ nameserver.line }}" 
+      line: "{{ nameserver.line }}" 
+    loop:
+      - { line: "nameserver 1.1.1.1" }
+      - { line: "nameserver 8.8.8.8" }
+    loop_control:
+      loop_var: nameserver
+
 # tasks file for debian
   - name: Install packages
     ansible.builtin.apt:
