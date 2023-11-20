@@ -24,26 +24,26 @@
 
 - name: Rootless docker installation
   become: true
-  become_user: rootless
+  become_user: "{{ username}}"
   shell: curl -fsSL https://get.docker.com/rootless | sh
 
 - name: Add docker bin path to PATH
   become: true
-  become_user: rootless
+  become_user: "{{ username}}"
   ansible.builtin.lineinfile:
-    path: /home/rootless/.bashrc
+    path: /home/{{ username}}/.bashrc
     regex: "{{ item.regexp }}"
     line: "{{ item.line }}"
   loop:
-    - { regexp: '^export XDG_RUNTIME_DIR=', line: "export XDG_RUNTIME_DIR=/home/rootless/.docker/run" }
+    - { regexp: '^export XDG_RUNTIME_DIR=', line: "export XDG_RUNTIME_DIR=/home/{{ username}}/.docker/run" }
     - { regexp: '^export PATH=$PATH:$HOME/bin', line: "export PATH=$PATH:$HOME/bin" }
     - { regexp: '^export DOCKER_HOST=', line: "export DOCKER_HOST=unix:///run/user/$UID/docker.sock" }
 
 - name: Fix dockerd rootless installation script
   become: true
-  become_user: rootless
+  become_user: "{{ username}}"
   ansible.builtin.replace:
-    path: /home/rootless/bin/dockerd-rootless-setuptool.sh
+    path: /home/{{ username}}/bin/dockerd-rootless-setuptool.sh
     regexp: "unix://\\$.*XDG_RUNTIME_DIR.*/docker.sock"
     replace: "unix:///run/user/$(id -u $(whoami))/docker.sock"
 
@@ -64,14 +64,14 @@
 
 - name: Start docker user service for the user rootless
   become: true
-  become_user: rootless
+  become_user: "{{ username}}"
   become_method: machinectl 
   ansible.builtin.shell: |
-    /home/rootless/bin/dockerd-rootless-setuptool.sh install
+    /home/{{ username}}/bin/dockerd-rootless-setuptool.sh install
     systemctl enable --user --now docker
 
 
 - name: Setup rootless docker autostart at login with daemon reload
   ansible.builtin.shell: |
-    loginctl enable-linger rootless
+    loginctl enable-linger {{ username}}
     sysctl --system

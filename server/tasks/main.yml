@@ -1,9 +1,11 @@
 ---
-- name: Raid mount task
-  ansible.builtin.include_tasks: raid.yml
+# - name: Raid mount task
+#   ansible.builtin.include_tasks: raid.yml
 
-- name: Install samba
-  ansible.builtin.include_tasks: samba.yml
+# - name: Install samba
+#   ansible.builtin.include_tasks: samba.yml
 
 - name: Install rootless docker
-  ansible.builtin.include_tasks: rootless-docker-installation.yml
+  ansible.builtin.include_tasks: "rootless-docker-installation.yml"
+  vars:
+    username: "rootless"
