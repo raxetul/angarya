@@ -1,0 +1,46 @@
+---
+  - name: Install server packages
+    ansible.builtin.apt:
+      pkg:
+        - lxc
+        - lxd
+        - python3-lxc 
+
+  - name: Copy file with owner and permissions
+    ansible.builtin.copy:
+      src: /{{ local.homeroot }}/{{ local.username }}/.ssh/kube.pub
+      dest: /tmp/kube.pub
+      mode: '0600'
+
+  - name: Load kernel modules
+    community.general.modprobe:
+      name: "{{ item }}"
+      state: present
+      persistent: present
+    loop:
+      - br_netfilter
+
+  - name: Setup kubernetes configuration
+    become: true
+    become_user: kube-user
+    shell: |
+      mkdir -p ~/.config/lxc
+      cp /etc/lxc/default.conf ~/.config/lxc/default.conf
+      MS_UID="$(grep "$(id -un)" /etc/subuid  | cut -d : -f 2)"
+      ME_UID="$(grep "$(id -un)" /etc/subuid  | cut -d : -f 3)"
+      MS_GID="$(grep "$(id -un)" /etc/subgid  | cut -d : -f 2)"
+      ME_GID="$(grep "$(id -un)" /etc/subgid  | cut -d : -f 3)"
+      echo "lxc.idmap = u $(id -u $(whoami)) $MS_UID $ME_UID" >> ~/.config/lxc/default.conf
+      echo "lxc.idmap = g $(id -u $(whoami)) $MS_GID $ME_GID" >> ~/.config/lxc/default.conf
+
+
+  - name: Init lxd
+    become_user: kube-user
+    shell: lxd init --minimal
+
+
+  - name: Kube master installation
+    ansible.builtin.include_tasks: ../master/main.yml
+
+  - name: Kube worker installations
+    ansible.builtin.include_tasks: ../worker/main.yml

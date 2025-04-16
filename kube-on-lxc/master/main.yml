@@ -1,0 +1,32 @@
+---
+  - name: Get acting user
+    shell: whoami
+    register: who_am_i
+
+
+  - name: Get acting user
+    debug: 
+      msg: "{{ who_am_i }}"
+
+  - name: Register SSH key in lxc container
+    become_user: kube-user
+    ansible.builtin.copy:
+      src: {{ local.home_root }}/{{ local.user_name }}/.ssh/kube.pub
+      dest: /tmp/kube.pub
+      mode: '0600'
+
+  - name: Echo kube master
+    become: true
+    become_user: kube-user
+    community.general.lxc_container:
+      name: kube-master
+      container_log: true
+      template: debian
+      state: started
+      template_options: --release bookworm
+      backing_store: dir
+      lxc_path: "${HOME}/kube/master/container"
+      archive: true
+      archive_path: "${HOME}/kube/master/archive"
+      archive_compression: none
+
