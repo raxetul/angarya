@@ -1,0 +1,125 @@
+---
+
+
+# Install Home Assistant Supervised in a LXC container
+- name: Setup Auto rsync Udev Backup Rule for the External Disk mount
+  become: true
+  block:
+    - name: Create systemd override directory for systemd-udevd
+      file:
+        path: /etc/systemd/system/systemd-udevd.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Create systemd service for USB backup
+      copy:
+        dest: /etc/systemd/system/{{ backup.server_name }}-backup@.service
+        content: |
+          [Unit]
+          Description=Backup to external drive %i
+          After=dev-%i.device
+          BindsTo=dev-%i.device
+
+          [Service]
+          Type=oneshot
+          ExecStartPre=/bin/sleep 5
+          ExecStart=/opt/scripts/backup-system.sh /dev/%I
+          User=root
+          Group=root
+
+          [Install]
+          WantedBy=dev-%i.device
+        mode: '0644'
+
+    - name: Ensure /opt/scripts directory exists
+      file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: true
+
+    - name: Create the backup script file
+      ansible.builtin.lineinfile:
+        path: /opt/scripts/backup-system.sh
+        create: yes
+        mode: '0755'
+        line: "#!/bin/bash"
+        state: present
+
+    - name: Prepare the backup script file
+      ansible.builtin.blockinfile:
+        path: /opt/scripts/backup-system.sh
+        mode: '0755'
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        insertafter: "^#!/bin/bash"
+        block: |
+          # Rsync script to backup
+          mkdir /tmp/backup
+          LOG=/tmp/backup/rsync.log
+          echo "$(date '+%Y-%m-%d--%H-%M-%S') Preparing {{ backup.server_name }} before backup.........................................." >> $LOG
+
+          mkdir -p {{ backup.target_mount}}
+
+          if ! mount | grep -q "$1 "; then
+            # Device not mounted, so mount it
+            mount $1 {{ backup.target_mount}} || {
+              echo "$(date '+%Y-%m-%d--%H-%M-%S') Error mounting $1 to {{ backup.target_mount}}" >> $LOG
+              exit 1
+            }
+            MOUNTED_BY_SCRIPT=true
+          else
+            echo "$(date '+%Y-%m-%d--%H-%M-%S') Device $1 already mounted, continuing" >> $LOG
+            MOUNTED_BY_SCRIPT=false
+          fi
+
+          mkdir -p "$(dirname "{{ backup.log_dir }}")"
+
+          echo "$(date '+%Y-%m-%d--%H-%M-%S') Started {{ backup.server_name }} backup..................................................." >> $LOG
+
+          # Loop through all backup tasks
+          {% for item_name, item_data in backup.tasks.items() %}
+
+          TIMESTAMP=$(date '+%Y-%m-%d--%H-%M-%S')
+          echo "$TIMESTAMP [rsync] {{ item_name }} started..." >> $LOG
+          # Create target directory if needed
+          mkdir -p "$(dirname "{{ item_data.target }}")"
+          # Sync folders with rsync
+          rsync -av --log-file=/tmp/backup/{{ item_name }}-$TIMESTAMP.log --log-file-format="[%t] %i" {{ item_data.source }} {{ item_data.target }}
+          echo "$TIMESTAMP [rsync] {{ item_name }} ended..." >> $LOG
+
+          # Copy log file to the log folder in target mount
+          cp /tmp/backup/{{ item_name }}-$TIMESTAMP.log {{ backup.log_dir }}
+
+          echo "Backup file counts for {{ item_name }}:" >> $LOG
+          echo "SOURCE: $(find {{ item_data.source }} -type f | wc -l)" >> $LOG
+          echo "TARGET: $(find {{ item_data.target }}/{{ item_data.source.split('/') | last }} -type f | wc -l)" >> $LOG
+
+          {% endfor %}
+
+          echo "$(date '+%Y-%m-%d--%H-%M-%S') Ended {{ backup.server_name }} backup....................................................." >> $LOG
+
+          sync
+          # Only unmount if we mounted it
+          if [ "$MOUNTED_BY_SCRIPT" = true ]; then
+            echo "$(date '+%Y-%m-%d--%H-%M-%S') Unmounting {{ backup.target_mount}} ..." >> $LOG
+            cp $LOG {{ backup.log_dir}}
+            sync
+            umount {{ backup.target_mount}}
+          fi
+
+    - name: Create the udev rule
+      ansible.builtin.blockinfile:
+        path: /etc/udev/rules.d/99-{{ backup.server_name }}-usb-rsync-backup.rules
+        create: true
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - EXTERNAL DISK BACKUP"
+        block: |
+          ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_SERIAL}=="{{ backup.external_drive.serial }}", ENV{SYSTEMD_WANTS}="{{ backup.server_name }}-backup@%k.service"
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Reload udev rules
+      ansible.builtin.command: udevadm control --reload-rules

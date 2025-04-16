@@ -9,7 +9,21 @@ raid_partitions:
 groups:
   - hitchhikers:
     gid: 5000
+  - developers:
+    gid: 6000
     
+local:
+  user_name: jinwoo
+  home_root: /Users
+
+network:
+  bridge:
+    name: drama
+  interfaces:
+    if1: eth0
+    if2: eth1
+    if3: eth2
+    if4: eth3
 
 users:
   - alice:
@@ -23,3 +37,45 @@ users:
       groups: ""
       uid: 2000
       keyFile: "/home/local-user-name/.ssh/server-rootless.pub"
+
+
+backup:
+  server_name: my-server
+  external_drive:
+    uuid: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+    serial: WDC_aaaaaaaa-*#*##**#_WD-************
+  log_dir: "/media/backup/synched/log"
+  target_mount: "/media/backup"
+  tasks:
+    photos:
+      source: "/media/photos"
+      target: "/media/backup/synched"
+    immich_server:
+      source: "/home/rootless/docker/immich/data/immich-server"
+      target: "/media/backup/synched/docker/immich/data"
+
+# vars file for home assistant
+lxc:
+  path: /home/lxc
+  bridge:
+    name: lxc
+    ip: "10.0.0.100"
+    netmask: "255.255.1.0"
+    gateway: "10.0.0.1"
+    network: "10.0.0.0/24"
+
+home_assistant:
+  lxc_container_name: home-assistant
+  lxc_storage_pool: default
+  lxc_architecture: amd64
+  volume_size: 40GB
+  dist: debian
+  release: bookworm
+  timezone: Europe/Istanbul
+  enable_nfs: false
+  enable_docker: true
+
+  net:
+    ip: 10.0.0.2
+    netmask: 255.255.255.0
+    gateway: 10.0.0.1

@@ -1,0 +1,6 @@
+  - name: Install samba and cockpit
+    ansible.builtin.apt:
+      update_cache: true
+      force_apt_get: true
+      pkg:
+        - bridge-utils

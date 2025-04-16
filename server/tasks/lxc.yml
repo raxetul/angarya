@@ -1,0 +1,169 @@
+---
+# Install Home Assistant Supervised in a LXC container
+- name: Setup Home Assistant Supervised in LXC container
+  become: true
+  block:
+    - name: Ensure /etc/lxc directory exists
+      file:
+        path: /etc/lxc
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: true
+
+    - name: Add LXC bridge configuration connected to existing physical bridge
+      ansible.builtin.blockinfile:
+        path: /etc/network/interfaces.d/{{ lxc.bridge.name }}-br
+        create: True
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - LXC BRIDGE"
+        block: |
+          auto lxc-br
+          iface lxc-br inet static
+              address 10.1.2.1
+              netmask 255.255.0.0
+              bridge_ports none
+              bridge_stp off
+              bridge_fd 0
+              
+          # Connect lxc-br to merkez-br
+          auto veth-lxc
+          iface veth-lxc inet manual
+              pre-up ip link add veth-lxc type veth peer name veth-phys
+              pre-up ip link set veth-lxc up
+              pre-up ip link set veth-phys up
+              pre-up ip link set veth-lxc master lxc-br
+              pre-up ip link set veth-phys master merkez-br
+              post-down ip link del veth-lxc
+        backup: yes
+
+    - name: Ensure bridge-utils package is installed
+      ansible.builtin.apt:
+        name: bridge-utils
+        state: present
+        update_cache: True
+
+    - name: Restart networking to apply changes
+      ansible.builtin.service:
+        name: networking
+        state: restarted
+      # Warning: This might disconnect if running over SSH
+
+    # - name: Bring up LXC bridge interface
+    #   ansible.builtin.command: ifup {{ lxc.bridge.name }}-br
+    #   args:
+    #     creates: /sys/class/net/{{ lxc.bridge.name }}-br
+    #   register: ifup_result
+    #   changed_when: ifup_result.rc == 0
+    #   failed_when: ifup_result.rc != 0
+
+    # # Optional: Bring up the bridge interface (might disconnect SSH if running remotely)
+    # - name: Enable IP forwarding
+    #   ansible.builtin.sysctl:
+    #     name: net.ipv4.ip_forward
+    #     value: '1'
+    #     state: present
+
+    - name: Check if lxc.conf exists
+      ansible.builtin.stat:
+        path: /etc/lxc/lxc.conf
+      register: lxc_conf_file
+
+    - name: Create lxc.conf file if it doesn't exist
+      ansible.builtin.copy:
+        dest: /etc/lxc/lxc.conf
+        content: |
+          # LXC configuration file
+          # This file is managed by Ansible
+        mode: '0644'
+      when: not lxc_conf_file.stat.exists
+
+    - name: Create lxc.conf file if it doesn't exist
+      ansible.builtin.copy:
+        dest: /etc/lxc/lxc.conf
+        content: |
+          # LXC configuration file
+          # This file is managed by Ansible
+        mode: '0644'
+      when: not lxc_conf_file.stat.exists
+
+    - name: Check if lxc.net.0.type is set in lxc.conf
+      ansible.builtin.lineinfile:
+        path: /etc/lxc/lxc.conf
+        regexp: '^lxc\.net\.0\.type'
+        line: 'lxc.net.0.type = veth'
+        state: present
+      check_mode: true
+      register: lxc_net_type
+
+    - name: Check if lxc.net.0.link is set in lxc.conf
+      ansible.builtin.lineinfile:
+        path: /etc/lxc/lxc.conf
+        regexp: '^lxc\.net\.0\.link'
+        line: 'lxc.net.0.link = {{ lxc.bridge.name }}-br'
+        state: present
+      check_mode: true
+      register: lxc_net_link
+
+    - name: Check if lxc.net.0.flags is set in lxc.conf
+      ansible.builtin.lineinfile:
+        path: /etc/lxc/lxc.conf
+        regexp: '^lxc\.net\.0\.flags'
+        line: 'lxc.net.0.flags = up'
+        state: present
+      check_mode: true
+      register: lxc_net_flags
+
+    - name: Check if lxc.lxcpath is set in lxc.conf
+      ansible.builtin.lineinfile:
+        path: /etc/lxc/lxc.conf
+        regexp: '^lxc\.lxcpath'
+        line: 'lxc.lxcpath = {{ lxc.path }}'
+        state: present
+      check_mode: true
+      register: lxc_lxcpath
+
+    - name: Add missing lxc.conf parameters
+      ansible.builtin.lineinfile:
+        path: /etc/lxc/lxc.conf
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        state: present
+      loop:
+        - { regexp: '^lxc\.net\.0\.type', line: 'lxc.net.0.type = veth' }
+        - { regexp: '^lxc\.net\.0\.link', line: 'lxc.net.0.link = lxc-br' }
+        - { regexp: '^lxc\.net\.0\.flags', line: 'lxc.net.0.flags = up' }
+        - { regexp: '^lxc\.lxcpath', line: 'lxc.lxcpath = {{ lxc.path }}' }
+      when: >
+        item.regexp == '^lxc\.net\.0\.type' and lxc_net_type.changed or
+        item.regexp == '^lxc\.net\.0\.link' and lxc_net_link.changed or
+        item.regexp == '^lxc\.net\.0\.flags' and lxc_net_flags.changed or
+        item.regexp == '^lxc\.lxcpath' and lxc_lxcpath.changed
+
+    # - name: Ensure LXC_NETWORK is set to {{ lxc.bridge.network }}
+    #   lineinfile:
+    #     path: /etc/default/lxc-net
+    #     regexp: '^LXC_NETWORK='
+    #     line: 'LXC_NETWORK="{{ lxc.bridge.network }}"'
+    #     state: present
+    #     backup: yes
+    #   register: lxc_config_changed
+      
+    # - name: Set LXC_ADDR to {{ lxc.bridge.ip }}
+    #   lineinfile:
+    #     path: /etc/default/lxc-net
+    #     regexp: '^LXC_ADDR='
+    #     line: 'LXC_ADDR="1{{ lxc.bridge.ip }}"'
+    #     state: present
+    #   register: lxc_addr_changed
+      
+    # - name: Restart LXC networking service if configuration changed
+    #   systemd:
+    #     name: lxc-net
+    #     state: restarted
+    #   when: lxc_config_changed.changed or lxc_addr_changed.changed
+      
+      
+    # - name: Display bridge configuration
+    #   debug:
+    #     var: bridge_config.stdout_lines

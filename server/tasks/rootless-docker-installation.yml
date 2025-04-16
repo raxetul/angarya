@@ -10,7 +10,6 @@
       "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
       tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-
 - name: Installing dependencies
   apt:
     update_cache: yes
@@ -29,15 +28,24 @@
 
 - name: Add docker bin path to PATH
   become: true
-  become_user: "{{ username}}"
+  become_user: "{{ username }}"
   ansible.builtin.lineinfile:
     path: /home/{{ username}}/.bashrc
     regex: "{{ item.regexp }}"
     line: "{{ item.line }}"
   loop:
-    - { regexp: '^export XDG_RUNTIME_DIR=', line: "export XDG_RUNTIME_DIR=/home/{{ username}}/.docker/run" }
-    - { regexp: '^export PATH=$PATH:$HOME/bin', line: "export PATH=$PATH:$HOME/bin" }
-    - { regexp: '^export DOCKER_HOST=', line: "export DOCKER_HOST=unix:///run/user/$UID/docker.sock" }
+    - {
+        regexp: "^export XDG_RUNTIME_DIR=",
+        line: "export XDG_RUNTIME_DIR=/home/{{ username}}/.docker/run",
+      }
+    - {
+        regexp: "^export PATH=$PATH:$HOME/bin",
+        line: "export PATH=$PATH:$HOME/bin",
+      }
+    - {
+        regexp: "^export DOCKER_HOST=",
+        line: "export DOCKER_HOST=unix:///run/user/$UID/docker.sock",
+      }
 
 - name: Fix dockerd rootless installation script
   become: true
@@ -47,9 +55,8 @@
     regexp: "unix://\\$.*XDG_RUNTIME_DIR.*/docker.sock"
     replace: "unix:///run/user/$(id -u $(whoami))/docker.sock"
 
-
 - name: Touch sysctl conf
-  shell: touch /etc/sysctl.d/99-rootless.conf 
+  shell: touch /etc/sysctl.d/99-rootless.conf
 
 - name: Generate sysctl conf
   include_tasks: "subtasks/rootless-sysctl.yml"
@@ -65,11 +72,10 @@
 - name: Start docker user service for the user rootless
   become: true
   become_user: "{{ username}}"
-  become_method: machinectl 
+  become_method: machinectl
   ansible.builtin.shell: |
     /home/{{ username}}/bin/dockerd-rootless-setuptool.sh install
     systemctl enable --user --now docker
-
 
 - name: Setup rootless docker autostart at login with daemon reload
   ansible.builtin.shell: |

@@ -23,3 +23,6 @@
         - samba
         - samba-common-bin
         - winbind
+
+
+# cockpit root login permission

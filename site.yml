@@ -1,7 +1,7 @@
 ---
-  - name: Main installation
-    hosts: merkez
-    roles:
-      - base
-      - server
-      - kube
+- name: Main installation
+  hosts: merkez
+  roles:
+    # - base
+    - server
+    # - kube
