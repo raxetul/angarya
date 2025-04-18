@@ -116,6 +116,67 @@
       delay: 5
       changed_when: false
 
+    - name: Configure LXC container autostart
+      ansible.builtin.template:
+        src: templates/lxc-container.service.j2
+        dest: "/etc/systemd/system/lxc-{{ home_assistant.lxc_container_name }}.service"
+        owner: root
+        group: root
+        mode: '0644'
+      register: service_file
+
+    - name: Reload systemd configuration
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      when: service_file.changed
+
+    - name: Enable and start LXC container service
+      ansible.builtin.systemd:
+        name: "lxc-{{ home_assistant.lxc_container_name }}"
+        enabled: yes
+        state: started
+
+    # - name: Ensure LXC autostart directory exists
+    #   ansible.builtin.file:
+    #     path: /etc/lxc/auto
+    #     state: directory
+    #     owner: root
+    #     group: root
+    #     mode: '0755'
+
+    # - name: Create symlink for container autostart
+    #   ansible.builtin.file:
+    #     src: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
+    #     dest: "/etc/lxc/auto/{{ home_assistant.lxc_container_name }}.conf"
+    #     state: link
+    #     owner: root
+    #     group: root
+    #   register: autostart_link
+
+    # - name: Add autostart delay to container configuration
+    #   ansible.builtin.lineinfile:
+    #     path: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
+    #     line: "lxc.start.delay = 5"
+    #     insertafter: EOF
+    #   register: delay_config
+
+    # - name: Add autostart priority to container configuration
+    #   ansible.builtin.lineinfile:
+    #     path: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
+    #     line: "lxc.start.order = 100"
+    #     insertafter: EOF
+    #   register: priority_config
+
+    # - name: Verify autostart configuration
+    #   ansible.builtin.command: lxc-ls -f
+    #   register: lxc_list
+    #   changed_when: false
+
+    # - name: Display autostart status
+    #   ansible.builtin.debug:
+    #     msg: "Container {{ home_assistant.lxc_container_name }} configured for autostart with delay of 5 seconds"
+    #   when: autostart_link.changed or delay_config.changed or priority_config.changed
+
     # - name: Install required dependencies in container
     #   delegate_to: "{{ home_assistant.lxc_container_name }}"
     #   apt:

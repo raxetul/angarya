@@ -1,0 +1,14 @@
+[Unit]
+Description={{ home_assistant.lxc_container_name }} LXC Container
+After=network.target lxc.service lxc-net.service
+Wants=lxc.service lxc-net.service
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/lxc-start -n {{ home_assistant.lxc_container_name }} -d
+ExecStop=/usr/bin/lxc-stop -n {{ home_assistant.lxc_container_name }}
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
