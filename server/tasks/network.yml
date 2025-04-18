@@ -8,7 +8,7 @@
 
   - name: Add {{ network.host.name }}-br bridge configuration connected to existing physical bridge
     ansible.builtin.blockinfile:
-      path: /etc/network/interfaces.d/{{ network.host.name }}-br
+      path: /etc/network/interfaces.d/00-{{ network.host.name }}-br
       create: True
       marker: "# {mark} ANSIBLE MANAGED BLOCK - {{ network.host.name }} BRIDGE"
       block: |
@@ -20,7 +20,7 @@
 
         auto lo {{ network.host.name }}-br
         iface {{ network.host.name }}-br inet static
-                bridge_ports {% for interface_name, interface_data in network.interfaces.items() %} {{ interface_data }} {% endfor %}
+                bridge_ports{% for interface_name, interface_data in network.interfaces.items() %} {{ interface_data }}{% endfor %}
 
                 address {{ network.host.ip }}
                 netmask {{ network.host.netmask }}
