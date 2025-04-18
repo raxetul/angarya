@@ -100,21 +100,14 @@
           Gateway={{ home_assistant.net.gateway }}
           DNS={{ network.dns }}
 
-    - name: Ensure LXC container is started
-      ansible.builtin.shell: >
-        lxc-start {{ home_assistant.lxc_container_name }}
-      when: home_assistant.lxc_container_name not in lxc_containers.stdout_lines and not is_container_running
-
-
-
-    - name: Wait for container network to be ready
-      ansible.builtin.shell: >
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- ip addr
-      register: container_ip_check
-      until: "'{{ home_assistant.net.ip }}' in container_ip_check.stdout"
-      retries: 10
-      delay: 5
-      changed_when: false
+    # - name: Wait for container network to be ready
+    #   ansible.builtin.shell: >
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- ip addr
+    #   register: container_ip_check
+    #   until: "'{{ home_assistant.net.ip }}' in container_ip_check.stdout"
+    #   retries: 10
+    #   delay: 5
+    #   changed_when: false
 
     - name: Configure LXC container autostart
       ansible.builtin.template:
@@ -125,6 +118,8 @@
         mode: '0644'
       register: service_file
 
+     
+
     - name: Reload systemd configuration
       ansible.builtin.systemd:
         daemon_reload: yes
@@ -132,7 +127,7 @@
 
     - name: Enable and start LXC container service
       ansible.builtin.systemd:
-        name: "lxc-{{ home_assistant.lxc_container_name }}"
+        name: "lxc-{{ home_assistant.lxc_container_name }}.service"
         enabled: yes
         state: started
 
@@ -177,83 +172,83 @@
     #     msg: "Container {{ home_assistant.lxc_container_name }} configured for autostart with delay of 5 seconds"
     #   when: autostart_link.changed or delay_config.changed or priority_config.changed
 
-    # - name: Install required dependencies in container
-    #   delegate_to: "{{ home_assistant.lxc_container_name }}"
-    #   apt:
-    #     name:
-    #       - jq
-    #       - curl
-    #       - avahi-daemon
-    #       - apparmor
-    #       - udisks2
-    #       - libglib2.0-bin
-    #       - network-manager
-    #       - dbus
-    #     state: present
-    #     update_cache: true
+    - name: Install required dependencies in container
+      delegate_to: "{{ home_assistant.lxc_container_name }}"
+      apt:
+        name:
+          - jq
+          - curl
+          - avahi-daemon
+          - apparmor
+          - udisks2
+          - libglib2.0-bin
+          - network-manager
+          - dbus
+        state: present
+        update_cache: true
 
-    # - name: Wait for container to be ready
-    #   ansible.builtin.command: lxc exec {{ lxc_container_name }} -- systemctl is-system-running
-    #   register: system_ready
-    #   until: system_ready.rc == 0 or "degraded" in system_ready.stdout
-    #   retries: 30
-    #   delay: 10
-    #   changed_when: false
-    #   failed_when: false
+    - name: Wait for container to be ready
+      ansible.builtin.command: lxc exec {{ home_assistant.lxc_container_name }} -- systemctl is-system-running
+      register: system_ready
+      until: system_ready.rc == 0 or "degraded" in system_ready.stdout
+      retries: 30
+      delay: 10
+      changed_when: false
+      failed_when: false
 
-    # - name: Install Home Assistant supervised prerequisites
-    #   ansible.builtin.command: >
-    #     lxc exec {{ lxc_container_name }} -- bash -c ' \
-    #     apt-get update && \
-    #     apt-get install -y software-properties-common apparmor-utils apt-transport-https ca-certificates curl dbus jq network-manager systemd-journal-remote'
-    #   register: prereq_result
-    #   changed_when: prereq_result.rc == 0
+    - name: Install Home Assistant supervised prerequisites
+      ansible.builtin.command: >
+        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c ' \
+        apt-get update && \
+        apt-get install -y software-properties-common apparmor-utils apt-transport-https ca-certificates curl dbus jq network-manager systemd-journal-remote'
+      register: prereq_result
+      changed_when: prereq_result.rc == 0
 
-    # - name: Add Docker repository
-    #   ansible.builtin.command: >
-    #     lxc exec {{ lxc_container_name }} -- bash -c '
-    #     curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - &&
-    #     add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"'
-    #   register: docker_repo_result
-    #   changed_when: docker_repo_result.rc == 0
+    - name: Add Docker repository
+      ansible.builtin.command: >
+        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
+        curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - &&
+        add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"'
+      register: docker_repo_result
+      changed_when: docker_repo_result.rc == 0
 
-    # - name: Install Docker
-    #   ansible.builtin.command: >
-    #     lxc exec {{ lxc_container_name }} -- bash -c '
-    #     apt-get update &&
-    #     apt-get install -y docker-ce docker-ce-cli containerd.io'
-    #   register: docker_install_result
-    #   changed_when: docker_install_result.rc == 0
+    - name: Install Docker
+      ansible.builtin.command: >
+        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
+        apt-get update &&
+        apt-get install -y docker-ce docker-ce-cli containerd.io'
+      register: docker_install_result
+      changed_when: docker_install_result.rc == 0
 
-    # - name: Download Home Assistant supervised installer
-    #   ansible.builtin.command: >
-    #     lxc exec {{ lxc_container_name }} -- bash -c '
-    #     curl -Lo homeassistant-supervised.deb https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb'
-    #   register: download_result
-    #   changed_when: download_result.rc == 0
+    - name: Download Home Assistant supervised installer
+      ansible.builtin.command: >
+        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
+        curl -Lo homeassistant-supervised.deb https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb'
+      register: download_result
+      changed_when: download_result.rc == 0
 
-    # - name: Install Home Assistant supervised
-    #   ansible.builtin.command: >
-    #     lxc exec {{ lxc_container_name }} -- bash -c '
-    #     apt-get install -y ./homeassistant-supervised.deb'
-    #   register: ha_install_result
-    #   changed_when: ha_install_result.rc == 0
+    - name: Install Home Assistant supervised
+      ansible.builtin.command: >
+        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
+        apt-get install -y ./homeassistant-supervised.deb'
+      register: ha_install_result
+      changed_when: ha_install_result.rc == 0
 
-    # - name: Check Home Assistant installation
-    #   ansible.builtin.command: >
-    #     lxc exec {{ lxc_container_name }} -- systemctl status hassos-supervisor
-    #   register: ha_status
-    #   changed_when: false
-    #   failed_when: false
+    - name: Check Home Assistant installation
+      ansible.builtin.command: >
+        lxc exec {{ home_assistant.lxc_container_name }} -- systemctl status hassos-supervisor
+      register: ha_status
+      changed_when: false
+      failed_when: false
 
-    # - name: Home Assistant installation summary
-    #   ansible.builtin.debug:
-    #     msg: >
-    #       Home Assistant Supervised installation completed.
-    #       Container name: {{ lxc_container_name }}
-    #       Container IP: {{ lxc_static_ip }}
-    #       Access Home Assistant at http://{{ lxc_static_ip }}:8123
-    #       Home Assistant Supervised installation completed.
-    #       Container name: {{ lxc_container_name }}
-    #       Container IP: {{ lxc_static_ip }}
-    #       Access Home Assistant at http://{{ lxc_static_ip }}:8123
+    - name: Home Assistant installation summary
+      ansible.builtin.debug:
+        msg: >
+          Home Assistant Supervised installation completed.
+          Container name: {{ home_assistant.lxc_container_name }}
+          Container IP: {{ home_assistant.net.ip }}
+          Access Home Assistant at http://{{ home_assistant.net.ip }}:8123
+          Home Assistant Supervised installation completed.
+          Container name: {{ home_assistant.lxc_container_name }}
+          Container IP: {{ home_assistant.net.ip }}
+          Access Home Assistant at http://{{ home_assistant.net.ip }}:8123
