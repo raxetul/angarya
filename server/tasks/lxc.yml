@@ -14,7 +14,7 @@
 
     - name: Add LXC bridge configuration connected to existing physical bridge
       ansible.builtin.blockinfile:
-        path: /etc/network/interfaces.d/{{ lxc.bridge.name }}-br
+        path: /etc/network/interfaces.d/10-{{ lxc.bridge.name }}-br
         create: True
         marker: "# {mark} ANSIBLE MANAGED BLOCK - LXC BRIDGE"
         block: |
@@ -30,7 +30,7 @@
 
     - name: Create persistent veth setup in network interfaces post-up
       ansible.builtin.blockinfile:
-        path: /etc/network/interfaces.d/{{ lxc.bridge.name }}-br
+        path: /etc/network/interfaces.d/10-{{ lxc.bridge.name }}-br
         insertafter: "iface {{ network.host.name }}-br inet static"
         marker: "    # {mark} ANSIBLE MANAGED - VETH SETUP"
         block: |
