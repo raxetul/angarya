@@ -5,20 +5,20 @@
 # - name: Install samba
 #   ansible.builtin.include_tasks: samba.yml
 
-# - name: Prepare networking
-#   ansible.builtin.include_tasks: network.yml
+- name: Prepare networking
+  ansible.builtin.include_tasks: network.yml
 
 - name: Install lxc
   ansible.builtin.include_tasks: lxc.yml
 
-- name: Install rootless docker
-  ansible.builtin.include_tasks: "rootless-docker-installation.yml"
-  vars:
-    username: "rootless"
+# # - name: Install rootless docker
+#   ansible.builtin.include_tasks: "rootless-docker-installation.yml"
+#   vars:
+#     username: "rootless"
 
 # - name: Setup Backups
 #   ansible.builtin.include_tasks: backup.yml
 
 
-# - name: Install home-assistant
-#   ansible.builtin.include_tasks: home-assistant.yml
+- name: Install home-assistant
+  ansible.builtin.include_tasks: home-assistant.yml

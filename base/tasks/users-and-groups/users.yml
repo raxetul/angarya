@@ -1,11 +1,36 @@
 ---
+
+- name: Ensure user groups
+  set_fact:
+    uid: "0"
+  when: item.key == "root"
+ 
+- name: Ensure user groups
+  set_fact:
+    uid: "{{ item.value.uid }}"
+  when: item.key != "root"
+
 - name: Ensure user exists
   ansible.builtin.user:
     name: "{{ item.key }}"
     comment: "{{ item.value.fullname }}"
-    uid: "{{ item.value.uid }}"
+    uid: "{{ uid }}"
     shell: /bin/bash
     state: present
+
+- name: Set subuid
+  ansible.builtin.lineinfile:
+    path: "/etc/subuid"
+    regex: "^{{ item.key}}:" 
+    line: "{{ item.key }}:{{ item.value.subuid }}:65536"
+  when: item.value.subuid is defined
+
+- name: Set subgid
+  ansible.builtin.lineinfile:
+    path: "/etc/subgid"
+    regex: "^{{ item.key}}:" 
+    line: "{{ item.key }}:{{ item.value.subuid }}:65536"
+  when: item.value.subuid is defined
 
 - name: Ensure user groups
   ansible.builtin.user:
@@ -16,7 +41,7 @@
 - name: Add bashrc lines
   become_user: "{{ item.key }}"
   ansible.builtin.lineinfile:
-    path: "/home/{{ item.key }}/.bashrc"
+    path: "${HOME}/.bashrc"
     regex: "{{ bash_line.regexp }}" 
     line: "{{ bash_line.line }}" 
   loop:

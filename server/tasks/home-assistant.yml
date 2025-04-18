@@ -24,24 +24,60 @@
         --dist debian --release bookworm --arch amd64
       when: home_assistant.lxc_container_name not in lxc_containers.stdout_lines and not is_container_running
 
-    # - name: Configure LXC container network
-    #   ansible.builtin.copy:
-    #     dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
-    #     owner: root
-    #     group: root
-    #     mode: "0644"
-    #     content: |
-    #       # LXC network configuration
-    #       lxc.net.0.type = veth
-    #       lxc.net.0.link = {{ lxc.bridge }}
-    #       lxc.net.0.flags = up
-    #       lxc.net.0.ipv4.address = {{ home_assistant.net.ip }}/{{ home_assistant.net.netmask }}
-    #       lxc.net.0.ipv4.gateway = {{ home_assistant.net.gateway }}
+    - name: Configure LXC container network
+      ansible.builtin.copy:
+        dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Container specific configuration
+          lxc.include = /usr/share/lxc/config/debian.common.conf
+          lxc.rootfs.path = dir:{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs
+          lxc.uts.name = {{ home_assistant.lxc_container_name }}
+          
+          # Network configuration
+          lxc.net.0.type = veth
+          lxc.net.0.link = {{ lxc.bridge.name }}-br
+          lxc.net.0.flags = up
+          lxc.net.0.ipv4.address = {{ home_assistant.net.ip }}/16
+          lxc.net.0.ipv4.gateway = {{ home_assistant.net.gateway }}
+          
+          # Console configuration
+          lxc.tty.max = 0
+          lxc.tty.dir = none
+          lxc.console.path = none
+          
+          # Mount configuration
+          lxc.mount.auto = proc:mixed sys:mixed cgroup:mixed
+          
+          # System configuration
+          lxc.cap.drop = mac_admin mac_override sys_time sys_module sys_rawio
+          
+          # Ensure procfs is mounted correctly
+          lxc.autodev = 1
 
-    # - name: Assign static IP address to Home Assistant LXC Container
-    #   ansible.builtin.shell: >
-    #   lxc profile copy default defaultnet1
-    #   lxc profile edit defaultnet1  
+    - name: Ensure kernel parameters are properly set
+      ansible.builtin.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      with_items:
+        - { key: 'kernel.unprivileged_userns_clone', value: '1' }
+        - { key: 'kernel.dmesg_restrict', value: '0' }
+        - { key: 'net.ipv4.ip_forward', value: '1' }
+
+    # - name: Check and fix AppArmor 
+    #   ansible.builtin.shell: |
+    #     if [ -f /etc/apparmor.d/lxc/lxc-default ]; then
+    #       # Check if AppArmor is causing the issue
+    #       echo 'mount options=(rw,bind) /dev/pts/**, mount fstype=devpts,' >> /etc/apparmor.d/lxc/lxc-default
+    #       systemctl reload apparmor
+    #     fi
+    #   changed_when: false
+
+
 
     - name: Ensure network configuration directory exists
       ansible.builtin.file:
@@ -61,8 +97,8 @@
 
           [Network]
           Address={{ home_assistant.net.ip }}/16
-          Gateway=10.1.0.1
-          DNS=8.8.8.8
+          Gateway={{ home_assistant.net.gateway }}
+          DNS={{ network.dns }}
 
     - name: Ensure LXC container is started
       ansible.builtin.shell: >
@@ -71,14 +107,14 @@
 
 
 
-    # - name: Wait for container network to be ready
-    #   ansible.builtin.shell: >
-    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- ip addr
-    #   register: container_ip_check
-    #   until: "'{{ home_assistant.net.ip }}' in container_ip_check.stdout"
-    #   retries: 10
-    #   delay: 5
-    #   changed_when: false
+    - name: Wait for container network to be ready
+      ansible.builtin.shell: >
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- ip addr
+      register: container_ip_check
+      until: "'{{ home_assistant.net.ip }}' in container_ip_check.stdout"
+      retries: 10
+      delay: 5
+      changed_when: false
 
     # - name: Install required dependencies in container
     #   delegate_to: "{{ home_assistant.lxc_container_name }}"

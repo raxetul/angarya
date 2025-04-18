@@ -1,6 +1,31 @@
   - name: Install samba and cockpit
     ansible.builtin.apt:
       update_cache: true
-      force_apt_get: true
+      state: present
       pkg:
         - bridge-utils
+        - iptables-persistent
+
+  - name: Add {{ network.host.name }}-br bridge configuration connected to existing physical bridge
+    ansible.builtin.blockinfile:
+      path: /etc/network/interfaces.d/{{ network.host.name }}-br
+      create: True
+      marker: "# {mark} ANSIBLE MANAGED BLOCK - {{ network.host.name }} BRIDGE"
+      block: |
+        # LXC Bridge Configuration
+
+        {% for interface_name, interface_data in network.interfaces.items() %}
+        allow-hotplug {{ interface_data }} 
+        {% endfor %}
+
+        auto lo {{ network.host.name }}-br
+        iface {{ network.host.name }}-br inet static
+                bridge_ports {% for interface_name, interface_data in network.interfaces.items() %} {{ interface_data }} {% endfor %}
+
+                address {{ network.host.ip }}
+                netmask {{ network.host.netmask }}
+                gateway {{ network.host.gateway }}
+                bridge_stp on
+                bridge_waitport 0
+                bridge_fd 0
+      backup: yes
