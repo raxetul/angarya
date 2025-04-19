@@ -25,7 +25,6 @@
                 address {{ network.host.ip }}
                 netmask {{ network.host.netmask }}
                 gateway {{ network.host.gateway }}
-                bridge_stp on
+                bridge_stp off
                 bridge_waitport 0
                 bridge_fd 0
-      backup: yes

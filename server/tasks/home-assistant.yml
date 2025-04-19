@@ -68,17 +68,6 @@
         - { key: 'kernel.dmesg_restrict', value: '0' }
         - { key: 'net.ipv4.ip_forward', value: '1' }
 
-    # - name: Check and fix AppArmor 
-    #   ansible.builtin.shell: |
-    #     if [ -f /etc/apparmor.d/lxc/lxc-default ]; then
-    #       # Check if AppArmor is causing the issue
-    #       echo 'mount options=(rw,bind) /dev/pts/**, mount fstype=devpts,' >> /etc/apparmor.d/lxc/lxc-default
-    #       systemctl reload apparmor
-    #     fi
-    #   changed_when: false
-
-
-
     - name: Ensure network configuration directory exists
       ansible.builtin.file:
         path: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/etc/network"
@@ -100,15 +89,6 @@
           Gateway={{ home_assistant.net.gateway }}
           DNS={{ network.dns }}
 
-    # - name: Wait for container network to be ready
-    #   ansible.builtin.shell: >
-    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- ip addr
-    #   register: container_ip_check
-    #   until: "'{{ home_assistant.net.ip }}' in container_ip_check.stdout"
-    #   retries: 10
-    #   delay: 5
-    #   changed_when: false
-
     - name: Configure LXC container autostart
       ansible.builtin.template:
         src: templates/lxc-container.service.j2
@@ -117,8 +97,6 @@
         group: root
         mode: '0644'
       register: service_file
-
-     
 
     - name: Reload systemd configuration
       ansible.builtin.systemd:
@@ -131,112 +109,59 @@
         enabled: yes
         state: started
 
-    # - name: Ensure LXC autostart directory exists
-    #   ansible.builtin.file:
-    #     path: /etc/lxc/auto
-    #     state: directory
-    #     owner: root
-    #     group: root
-    #     mode: '0755'
-
-    # - name: Create symlink for container autostart
-    #   ansible.builtin.file:
-    #     src: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
-    #     dest: "/etc/lxc/auto/{{ home_assistant.lxc_container_name }}.conf"
-    #     state: link
-    #     owner: root
-    #     group: root
-    #   register: autostart_link
-
-    # - name: Add autostart delay to container configuration
-    #   ansible.builtin.lineinfile:
-    #     path: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
-    #     line: "lxc.start.delay = 5"
-    #     insertafter: EOF
-    #   register: delay_config
-
-    # - name: Add autostart priority to container configuration
-    #   ansible.builtin.lineinfile:
-    #     path: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
-    #     line: "lxc.start.order = 100"
-    #     insertafter: EOF
-    #   register: priority_config
-
-    # - name: Verify autostart configuration
-    #   ansible.builtin.command: lxc-ls -f
-    #   register: lxc_list
-    #   changed_when: false
-
-    # - name: Display autostart status
-    #   ansible.builtin.debug:
-    #     msg: "Container {{ home_assistant.lxc_container_name }} configured for autostart with delay of 5 seconds"
-    #   when: autostart_link.changed or delay_config.changed or priority_config.changed
-
     - name: Install required dependencies in container
-      delegate_to: "{{ home_assistant.lxc_container_name }}"
-      apt:
-        name:
-          - jq
-          - curl
-          - avahi-daemon
-          - apparmor
-          - udisks2
-          - libglib2.0-bin
-          - network-manager
-          - dbus
-        state: present
-        update_cache: true
+      ansible.builtin.shell: |
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
+        apt update &&
+        apt install -y jq curl avahi-daemon apparmor udisks2 libglib2.0-bin network-manager dbus"
+      register: install_result
+      changed_when: "'0 upgraded, 0 newly installed' not in install_result.stdout"
 
     - name: Wait for container to be ready
-      ansible.builtin.command: lxc exec {{ home_assistant.lxc_container_name }} -- systemctl is-system-running
+      ansible.builtin.command: lxc-attach -n  {{ home_assistant.lxc_container_name }} -- systemctl is-system-running
       register: system_ready
       until: system_ready.rc == 0 or "degraded" in system_ready.stdout
-      retries: 30
-      delay: 10
+      retries: 3
+      delay: 2
       changed_when: false
       failed_when: false
 
     - name: Install Home Assistant supervised prerequisites
-      ansible.builtin.command: >
-        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c ' \
-        apt-get update && \
-        apt-get install -y software-properties-common apparmor-utils apt-transport-https ca-certificates curl dbus jq network-manager systemd-journal-remote'
+      ansible.builtin.shell: |
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+          apt update &&
+          apt install -y software-properties-common apparmor-utils apt-transport-https ca-certificates curl dbus jq network-manager systemd-journal-remote'
       register: prereq_result
       changed_when: prereq_result.rc == 0
 
     - name: Add Docker repository
-      ansible.builtin.command: >
-        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
-        curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - &&
-        add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"'
+      ansible.builtin.shell: |
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+          curl -fsSL https://download.docker.com/linux/{{ home_assistant.dist }}/gpg | apt-key add - &&
+          add-apt-repository -y "deb [arch=amd64] https://download.docker.com/linux/{{ home_assistant.dist }} {{ home_assistant.release }} stable"'
       register: docker_repo_result
       changed_when: docker_repo_result.rc == 0
 
     - name: Install Docker
-      ansible.builtin.command: >
-        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
-        apt-get update &&
-        apt-get install -y docker-ce docker-ce-cli containerd.io'
+      ansible.builtin.command: |
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+          apt update &&
+          apt install -y docker-ce docker-ce-cli containerd.io'
       register: docker_install_result
       changed_when: docker_install_result.rc == 0
 
-    - name: Download Home Assistant supervised installer
-      ansible.builtin.command: >
-        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
-        curl -Lo homeassistant-supervised.deb https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb'
-      register: download_result
-      changed_when: download_result.rc == 0
-
-    - name: Install Home Assistant supervised
-      ansible.builtin.command: >
-        lxc exec {{ home_assistant.lxc_container_name }} -- bash -c '
-        apt-get install -y ./homeassistant-supervised.deb'
+    - name: Download and install Home Assistant supervised installer
+      ansible.builtin.command: |
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+          curl -Lo homeassistant-supervised.deb https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb
+          apt install -y ./homeassistant-supervised.deb
+          rm ./homeassistant-supervised.deb'
       register: ha_install_result
       changed_when: ha_install_result.rc == 0
 
     - name: Check Home Assistant installation
       ansible.builtin.command: >
-        lxc exec {{ home_assistant.lxc_container_name }} -- systemctl status hassos-supervisor
+        lxc-attach -n {{ home_assistant.lxc_container_name }} -- systemctl status hassos-supervisor
       register: ha_status
       changed_when: false
       failed_when: false

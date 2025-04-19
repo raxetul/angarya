@@ -11,141 +11,12 @@
         owner: root
         group: root
       become: true
-
-    - name: Add LXC bridge configuration connected to existing physical bridge
-      ansible.builtin.blockinfile:
-        path: /etc/network/interfaces.d/10-{{ lxc.bridge.name }}-br
-        create: True
-        marker: "# {mark} ANSIBLE MANAGED BLOCK - LXC BRIDGE"
-        block: |
-          # LXC Bridge Configuration
-          auto {{ lxc.bridge.name }}-br
-          iface {{ lxc.bridge.name }}-br inet static
-              address {{ lxc.bridge.ip }}
-              netmask {{ lxc.bridge.netmask }}
-              bridge_ports none
-              bridge_stp off
-              bridge_fd 0
-        backup: yes
-
-    - name: Create persistent veth setup in network interfaces post-up
-      ansible.builtin.blockinfile:
-        path: /etc/network/interfaces.d/10-{{ lxc.bridge.name }}-br
-        insertafter: "iface {{ network.host.name }}-br inet static"
-        marker: "    # {mark} ANSIBLE MANAGED - VETH SETUP"
-        block: |
-                # Connect {{ network.host.name }}-br to {{ lxc.bridge.name }}-br
-                post-up ip link add veth-{{ network.host.name }} type veth peer name veth-{{ lxc.bridge.name }} || true
-                post-up ip link set veth-{{ network.host.name }} master {{ network.host.name }}-br || true
-                post-up ip link set veth-{{ lxc.bridge.name }} master {{ lxc.bridge.name }}-br || true
-                post-up ip link set veth-{{ network.host.name }} up || true
-                post-up ip link set veth-{{ lxc.bridge.name }} up || true
-                post-down ip link del veth-{{ network.host.name }} || true
-        backup: yes
-
-    # - name: Add veth pair configuration to a separate script
-    #   ansible.builtin.copy:
-    #     dest: /opt/scripts/setup-{{ lxc.bridge.name }}-bridge.sh
-    #     mode: '0755'
-    #     content: |
-    #       #!/bin/bash
-    #       # Setup veth pair between bridges
-    #       if ! ip link show veth-{{ lxc.bridge.name }} &>/dev/null; then
-    #         ip link add veth-{{ lxc.bridge.name }} type veth peer name veth-phys
-    #         ip link set veth-{{ lxc.bridge.name }} master {{ lxc.bridge.name }}-br
-    #         ip link set veth-phys master {{ network.host.name }}-br
-    #         ip link set veth-{{ lxc.bridge.name }} up
-    #         ip link set veth-phys up
-    #         echo "Veth pair created and connected bridges"
-    #       else
-    #         echo "Veth pair already exists"
-    #       fi
-
-    # OPEN IF NEEDED
-    # - name: Create the bridge only (won't disrupt network)
-    #   ansible.builtin.command: ifup {{ lxc.bridge.name }}-br
-    #   args:
-    #     creates: /sys/class/net/{{ lxc.bridge.name }}-br
-    #   register: ifup_result
-    #   changed_when: ifup_result.rc == 0
-    #   failed_when: ifup_result.rc != 0 and "already exists" not in ifup_result.stderr
-
-    - name: Ensure forwarding is enabled in sysctl
-      ansible.builtin.lineinfile:
-        path: /etc/sysctl.conf
-        regexp: '^net.ipv4.ip_forward'
-        line: 'net.ipv4.ip_forward = 1'
         
-    - name: Apply sysctl changes
-      ansible.builtin.command: sysctl -p
-      
-    - name: Create permanent iptables rules file
-      ansible.builtin.copy:
-        dest: /etc/iptables/rules.v4
-        content: |
-          *filter
-          :INPUT ACCEPT [0:0]
-          :FORWARD ACCEPT [0:0]
-          :OUTPUT ACCEPT [0:0]
-          -A FORWARD -i {{ network.host.name }}-br -o {{ lxc.bridge.name }}-br -j ACCEPT
-          -A FORWARD -i {{ lxc.bridge.name }}-br -o {{ network.host.name }}-br -j ACCEPT
-          COMMIT
-          *nat
-          :PREROUTING ACCEPT [0:0]
-          :INPUT ACCEPT [0:0]
-          :OUTPUT ACCEPT [0:0]
-          :POSTROUTING ACCEPT [0:0]
-          COMMIT
-        mode: '0644'
-        
-    - name: Load iptables rules on boot
-      ansible.builtin.lineinfile:
-        path: /etc/rc.local
-        line: 'iptables-restore < /etc/iptables/rules.v4'
-        insertbefore: 'exit 0'
-        create: yes
-        mode: '0755'
-      
-    # - name: Setup veth pair with separate script
-    #   ansible.builtin.shell: /opt/scripts/setup-{{ lxc.bridge.name }}-bridge.sh
-    #   register: veth_setup
-    #   changed_when: "'Veth pair created' in veth_setup.stdout"
-
-    # - name: Restart networking to apply changes
-    #   ansible.builtin.service:
-    #     name: networking
-    #     state: restarted
-      # Warning: This might disconnect if running over SSH
-
-    # - name: Bring up LXC bridge interface
-    #   ansible.builtin.command: ifup {{ lxc.bridge.name }}-br
-    #   args:
-    #     creates: /sys/class/net/{{ lxc.bridge.name }}-br
-    #   register: ifup_result
-    #   changed_when: ifup_result.rc == 0
-    #   failed_when: ifup_result.rc != 0
-
-    # # Optional: Bring up the bridge interface (might disconnect SSH if running remotely)
-    # - name: Enable IP forwarding
-    #   ansible.builtin.sysctl:
-    #     name: net.ipv4.ip_forward
-    #     value: '1'
-    #     state: present
-
     - name: Check if lxc.conf exists
       ansible.builtin.stat:
         path: /etc/lxc/lxc.conf
       register: lxc_conf_file
-
-    - name: Create lxc.conf file if it doesn't exist
-      ansible.builtin.copy:
-        dest: /etc/lxc/lxc.conf
-        content: |
-          # LXC configuration file
-          # This file is managed by Ansible
-        mode: '0644'
-      when: not lxc_conf_file.stat.exists
-
+              
     - name: Create lxc.conf file if it doesn't exist
       ansible.builtin.copy:
         dest: /etc/lxc/lxc.conf
@@ -224,14 +95,16 @@
         line: 'LXC_ADDR="1{{ lxc.bridge.ip }}"'
         state: present
       register: lxc_addr_changed
-      
+
     - name: Restart LXC networking service if configuration changed
       systemd:
-        name: lxc-net
+        name: "lxc-net"
         state: restarted
       when: lxc_config_changed.changed or lxc_addr_changed.changed
-      
       
     - name: Display bridge configuration
       debug:
         var: bridge_config.stdout_lines
+
+    - name: Apply sysctl changes
+      ansible.builtin.command: sysctl -p

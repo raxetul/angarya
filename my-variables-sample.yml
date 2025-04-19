@@ -58,7 +58,7 @@ backup:
 lxc:
   path: /home/lxc
   bridge:
-    name: lxc
+    name: drama
     ip: "10.0.0.100"
     netmask: "255.255.1.0"
     gateway: "10.0.0.1"
