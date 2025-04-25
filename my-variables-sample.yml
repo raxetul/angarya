@@ -19,6 +19,10 @@ local:
 network:
   bridge:
     name: drama
+    ip: "10.0.0.2"
+    netmask: "255.255.0.0"
+    prefix_length: "16"
+    gateway: "10.0.0.1"
   interfaces:
     if1: eth0
     if2: eth1
@@ -59,7 +63,7 @@ lxc:
   path: /home/lxc
   bridge:
     name: drama
-    ip: "10.0.0.100"
+    ip: "10.0.0.2"
     netmask: "255.255.1.0"
     gateway: "10.0.0.1"
     network: "10.0.0.0/24"
@@ -74,8 +78,15 @@ home_assistant:
   timezone: Europe/Istanbul
   enable_nfs: false
   enable_docker: true
+  os_agent_version: "1.7.2"
+  os_agent_arch: x86_64
 
   net:
-    ip: 10.0.0.2
-    netmask: 255.255.255.0
-    gateway: 10.0.0.1
+    ip: "10.0.0.3"
+    gateway: "10.0.0.1"
+    netmask: "255.255.0.0"
+    prefix_length: "16"
+  http:
+    use_x_forwarded_for: true
+    trusted_proxy: "10.0.0.3/16"  # Your proxy server's network
+    base_url: https://your-domain-name

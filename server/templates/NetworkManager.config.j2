@@ -1,0 +1,16 @@
+[main]
+plugins=ifupdown,keyfile
+dns=default
+rc-manager=file
+
+[ifupdown]
+managed=true
+
+[device]
+wifi.scan-rand-mac-address=no
+
+[keyfile]
+unmanaged-devices=
+
+[logging]
+backend=journal

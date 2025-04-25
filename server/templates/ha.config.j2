@@ -1,0 +1,12 @@
+http:
+  ip_ban_enabled: true
+  login_attempts_threshold: 5
+  use_x_forwarded_for: {{ home_assistant.http.use_x_forwarded_for }}
+  trusted_proxies:
+    - {{ home_assistant.http.trusted_proxy }}  # Your proxy server's network
+    - 10.2.0.0/16
+    - 127.0.0.1
+  server_port: 8123
+  cors_allowed_origins:
+    - {{ home_assistant.http.base_url }}
+    - http://{{ home_assistant.net.ip }}:8123

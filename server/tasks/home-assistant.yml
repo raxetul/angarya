@@ -21,10 +21,10 @@
     - name: Create Home Assistant LXC Container
       ansible.builtin.shell: >
         lxc-create -n {{ home_assistant.lxc_container_name }} -t download --
-        --dist debian --release bookworm --arch amd64
+        --dist debian --release bookworm --arch {{ home_assistant.arch }}
       when: home_assistant.lxc_container_name not in lxc_containers.stdout_lines and not is_container_running
 
-    - name: Configure LXC container network
+    - name: Configure LXC container
       ansible.builtin.copy:
         dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/config"
         owner: root
@@ -33,29 +33,32 @@
         content: |
           # Container specific configuration
           lxc.include = /usr/share/lxc/config/debian.common.conf
-          lxc.rootfs.path = dir:{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs
-          lxc.uts.name = {{ home_assistant.lxc_container_name }}
-          
+          lxc.rootfs.path = dir:/home/lxc/home-assistant/rootfs
+          lxc.uts.name = home-assistant
+
+          # Privileged container for Docker
+          lxc.apparmor.profile = unconfined
+          lxc.cgroup.devices.allow = a
+          lxc.cap.drop =
+          lxc.mount.auto = proc:mixed sys:mixed cgroup:mixed
+
           # Network configuration
           lxc.net.0.type = veth
-          lxc.net.0.link = {{ lxc.bridge.name }}-br
+          lxc.net.0.link = merkez-br
           lxc.net.0.flags = up
-          lxc.net.0.ipv4.address = {{ home_assistant.net.ip }}/16
-          lxc.net.0.ipv4.gateway = {{ home_assistant.net.gateway }}
-          
+          lxc.net.0.ipv4.address = 10.1.2.2/{{ home_assistant.net.prefix_length}}
+          lxc.net.0.ipv4.gateway = 10.1.0.1
+
           # Console configuration
           lxc.tty.max = 0
           lxc.tty.dir = none
           lxc.console.path = none
-          
-          # Mount configuration
-          lxc.mount.auto = proc:mixed sys:mixed cgroup:mixed
-          
-          # System configuration
-          lxc.cap.drop = mac_admin mac_override sys_time sys_module sys_rawio
-          
+
           # Ensure procfs is mounted correctly
           lxc.autodev = 1
+
+          # Required for Docker/Supervisor
+          lxc.mount.entry = /dev/fuse dev/fuse none bind,optional,create=file 0 0
 
     - name: Ensure kernel parameters are properly set
       ansible.builtin.sysctl:
@@ -85,7 +88,7 @@
           Name=eth0*
 
           [Network]
-          Address={{ home_assistant.net.ip }}/16
+          Address={{ home_assistant.net.ip }}/{{ home_assistant.net.prefix_length}}
           Gateway={{ home_assistant.net.gateway }}
           DNS={{ network.dns }}
 
@@ -98,6 +101,23 @@
         mode: '0644'
       register: service_file
 
+    - name: Create home assistant configuration directory
+      ansible.builtin.file:
+        path: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/config"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Configure reverse proxy
+      ansible.builtin.template:
+        src: templates/ha.config.j2
+        dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/config/configuration.yaml"
+        owner: root
+        group: root
+        mode: '0644'
+      register: http_config
+
     - name: Reload systemd configuration
       ansible.builtin.systemd:
         daemon_reload: yes
@@ -109,71 +129,293 @@
         enabled: yes
         state: started
 
-    - name: Install required dependencies in container
-      ansible.builtin.shell: |
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
-        apt update &&
-        apt install -y jq curl avahi-daemon apparmor udisks2 libglib2.0-bin network-manager dbus"
-      register: install_result
-      changed_when: "'0 upgraded, 0 newly installed' not in install_result.stdout"
+####################### NETWORKING ##########################################################################################################################################
+    - name: Setup Home Assistant Networking
+      become: true
+      block:
+        - name: Install NetworkManager package
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
+              apt-get update
+              apt-get install -y network-manager
+            "
+          register: nm_install
+          changed_when: nm_install.rc == 0
 
-    - name: Wait for container to be ready
-      ansible.builtin.command: lxc-attach -n  {{ home_assistant.lxc_container_name }} -- systemctl is-system-running
-      register: system_ready
-      until: system_ready.rc == 0 or "degraded" in system_ready.stdout
-      retries: 3
-      delay: 2
-      changed_when: false
-      failed_when: false
+        
+        - name: Disable systemd-networkd and systemd-resolved
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
+              systemctl stop systemd-networkd systemd-resolved
+              systemctl disable systemd-networkd systemd-resolved
+              systemctl mask systemd-networkd systemd-resolved
+            "
+          register: disable_systemd_networking
+          changed_when: disable_systemd_networking.rc == 0
 
-    - name: Install Home Assistant supervised prerequisites
-      ansible.builtin.shell: |
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
-          apt update &&
-          apt install -y software-properties-common apparmor-utils apt-transport-https ca-certificates curl dbus jq network-manager systemd-journal-remote'
-      register: prereq_result
-      changed_when: prereq_result.rc == 0
+        - name: Stop NetworkManager clear config
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+              # Stop NetworkManager
+              systemctl stop NetworkManager
+              
+              # Clean up any existing connections
+              rm -f /etc/NetworkManager/system-connections/*
+            '
+          register: clear_networkmanager_config
 
-    - name: Add Docker repository
-      ansible.builtin.shell: |
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
-          curl -fsSL https://download.docker.com/linux/{{ home_assistant.dist }}/gpg | apt-key add - &&
-          add-apt-repository -y "deb [arch=amd64] https://download.docker.com/linux/{{ home_assistant.dist }} {{ home_assistant.release }} stable"'
-      register: docker_repo_result
-      changed_when: docker_repo_result.rc == 0
+        - name: Configure NetworkManager eth0 connection
+          ansible.builtin.template:
+            src: templates/eth0-static-connection.config.j2
+            dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/etc/NetworkManager/system-connections/eth0.nmconnection"
+            owner: root
+            group: root
+            mode: '0600'
+          register: eth0_connection_config
 
-    - name: Install Docker
-      ansible.builtin.command: |
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
-          apt update &&
-          apt install -y docker-ce docker-ce-cli containerd.io'
-      register: docker_install_result
-      changed_when: docker_install_result.rc == 0
+        - name: Configure NetworkManager connectivity
+          ansible.builtin.template:
+            src: 20-connectivity.config.j2
+            dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/etc/NetworkManager/conf.d/20-connectivity.conf"
+            owner: root
+            group: root
+            mode: '0644'
+          register: connectivity_config
+        
+        - name: Configure NetworkManager
+          ansible.builtin.template:
+            src: NetworkManager.config.j2
+            dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/etc/NetworkManager/NetworkManager.conf"
+            owner: root
+            group: root
+            mode: '0644'
+          register: networkmanager_config
+        
+        # - name: Force NetworkManager Connectivity is connected
+        #   ansible.builtin.template:
+        #     src: force-nm-connectivity.service.j2
+        #     dest: "{{ lxc.path }}/{{ home_assistant.lxc_container_name }}/rootfs/etc/systemd/system/force-nm-connectivity.service"
+        #     owner: root
+        #     group: root
+        #     mode: '0644'
+        #   register: force_networkmanager_connectivity_service
+        
+        # - name: Trigger Force NetworkManager Connectivity service
+        #   ansible.builtin.shell: |
+        #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c 'systemctl start force-nm-connectivity.service'
+        #   register: interface_name
+        #   changed_when: false
+        
+        - name: Start NetworkManager
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+              # Start NetworkManager
+              systemctl start NetworkManager
+            '
+          register: networkmanager_started
 
-    - name: Download and install Home Assistant supervised installer
-      ansible.builtin.command: |
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
-          curl -Lo homeassistant-supervised.deb https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb
-          apt install -y ./homeassistant-supervised.deb
-          rm ./homeassistant-supervised.deb'
-      register: ha_install_result
-      changed_when: ha_install_result.rc == 0
+        - name: Get current eth0 interface name
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "ip -o link | grep -E 'eth0(@|$)' | awk -F': ' '{print \$2}' | cut -d@ -f1"
+          register: interface_name
+          changed_when: false
 
-    - name: Check Home Assistant installation
-      ansible.builtin.command: >
-        lxc-attach -n {{ home_assistant.lxc_container_name }} -- systemctl status hassos-supervisor
-      register: ha_status
-      changed_when: false
-      failed_when: false
+        - name: Set interface fact
+          ansible.builtin.set_fact:
+            eth0_interface: "{{ interface_name.stdout | trim }}"
 
-    - name: Home Assistant installation summary
-      ansible.builtin.debug:
-        msg: >
-          Home Assistant Supervised installation completed.
-          Container name: {{ home_assistant.lxc_container_name }}
-          Container IP: {{ home_assistant.net.ip }}
-          Access Home Assistant at http://{{ home_assistant.net.ip }}:8123
-          Home Assistant Supervised installation completed.
-          Container name: {{ home_assistant.lxc_container_name }}
-          Container IP: {{ home_assistant.net.ip }}
-          Access Home Assistant at http://{{ home_assistant.net.ip }}:8123
+        - name: Check if eth0 connection exists
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "nmcli con show | grep -q 'eth0' && echo 'exists' || echo 'not_exists'"
+          register: eth0_connection_exists
+          changed_when: false
+
+        - name: Create eth0 connection if it doesn't exist
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "nmcli con add type ethernet con-name eth0-static ifname {{ eth0_interface }} && nmcli con modify eth0-static connection.autoconnect yes && nmcli connection modify eth0-static connection.autoconnect-priority 100"
+          when: eth0_connection_exists.stdout == 'not_exists'
+
+        - name: Update eth0 connection if it exists
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "nmcli con modify eth0-static connection.interface-name {{ eth0_interface }}"
+          when: eth0_connection_exists.stdout == 'exists'
+
+        - name: Ensure eth0 connection is up
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "nmcli con up eth0-static || true"
+          register: connection_up
+          changed_when: "'successfully activated' in connection_up.stdout"
+
+
+        - name: Restart NetworkManager
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+              nmcli con down eth0-static
+              systemctl restart NetworkManager
+              nmcli con up eth0-static
+            '
+          register: nm_restart
+          changed_when: nm_restart.rc == 0
+
+        - name: Check NetworkManager connectivity status
+          ansible.builtin.shell: |
+            lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "nmcli networking connectivity"
+          register: nm_connectivity_status
+          changed_when: false
+
+#################################################################################################################################################################
+
+    # - name: Install required dependencies in container
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
+    #     apt-get update && \
+    #     apt-get install -y --no-install-recommends apt-utils && \
+    #     apt-get install -y jq curl avahi-daemon apparmor udisks2 libglib2.0-bin network-manager dbus software-properties-common"
+    #   register: install_result
+    #   changed_when: "'0 upgraded, 0 newly installed' not in install_result.stdout"
+
+    # - name: Wait for container to be ready
+    #   ansible.builtin.command: lxc-attach -n  {{ home_assistant.lxc_container_name }} -- systemctl is-system-running
+    #   register: system_ready
+    #   until: system_ready.rc == 0 or "degraded" in system_ready.stdout
+    #   retries: 3
+    #   delay: 2
+    #   changed_when: false
+    #   failed_when: false
+
+    # - name: Install Home Assistant supervised prerequisites
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+    #       apt-get update &&
+    #       apt-get install -y \
+    #         apparmor \
+    #         bluez \
+    #         cifs-utils \
+    #         curl \
+    #         dbus \
+    #         iproute2 \
+    #         jq \
+    #         libglib2.0-bin \
+    #         lsb-release \
+    #         network-manager \
+    #         nfs-common \
+    #         systemd-journal-remote \
+    #         systemd-resolved \
+    #         systemd-timesyncd \
+    #         udisks2 \
+    #         wget'
+    #   register: prereq_result
+
+    # - name: Add Docker repository
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+    #       curl -fsSL https://download.docker.com/linux/{{ home_assistant.dist }}/gpg | apt-key add - &&
+    #       add-apt-repository -y "deb [arch={{ home_assistant.arch }}] https://download.docker.com/linux/{{ home_assistant.dist }} {{ home_assistant.release }} stable"'
+    #   register: docker_repo_result
+    #   changed_when: docker_repo_result.rc == 0
+
+    # - name: Install Docker
+    #   ansible.builtin.command: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+    #       apt-get update &&
+    #       apt-get install -y docker-ce docker-ce-cli containerd.io'
+    #   register: docker_install_result
+    #   changed_when: docker_install_result.rc == 0
+
+    
+    # - name: Download and install Home Assistant supervised installer
+    #   ansible.builtin.command: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c '
+    #       curl -Lo ./os-agent.deb https://github.com/home-assistant/os-agent/releases/download/{{ home_assistant.os_agent_version }}/os-agent_{{ home_assistant.os_agent_version }}_linux_{{ home_assistant.os_agent_arch }}.deb
+    #       curl -Lo homeassistant-supervised.deb https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb
+    #       apt-get install -y ./os-agent.deb ./homeassistant-supervised.deb
+    #       rm ./os-agent.deb ./homeassistant-supervised.deb'
+    #   register: ha_install_result
+    #   changed_when: ha_install_result.rc == 0
+
+    # - name: Check Home Assistant installation
+    #   ansible.builtin.command: >
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- systemctl status hassos-supervisor
+    #   register: ha_status
+    #   changed_when: false
+    #   failed_when: false
+
+    
+
+    # - name: Restart Home Assistant supervisor
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "systemctl restart hassio-supervisor && sleep 3"
+    #   register: supervisor_restart
+    #   changed_when: supervisor_restart.rc == 0
+
+    # - name: Check if supervisor API is available
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
+    #       for i in {1..5}; do
+    #         if curl -s --connect-timeout 2 http://supervisor/ > /dev/null; then
+    #           echo 'Supervisor API is available'
+    #           break
+    #         else
+    #           echo 'Waiting for supervisor API (attempt $i/5)...'
+    #           sleep 3
+    #         fi
+    #       done
+    #     "
+    #   register: supervisor_api_check
+    #   changed_when: false
+
+    # - name: Reload Home Assistant network
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "ha network reload"
+    #   register: ha_network_reload
+    #   changed_when: ha_network_reload.rc == 0
+    #   failed_when: false
+
+    # # - name: Try alternative approaches if network reload failed
+    # #   ansible.builtin.shell: |
+    # #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "
+    # #       # Try to restart the OS agent
+    # #       echo 'Restarting OS agent...'
+    # #       systemctl restart os-agent
+    # #       sleep 2
+          
+    # #       # Alternative approach - restart docker network
+    # #       echo 'Trying alternative approach - restarting docker...'
+    # #       systemctl restart docker
+    # #       sleep 5
+          
+    # #       # Restart supervisor again
+    # #       echo 'Restarting supervisor again...'
+    # #       systemctl restart hassio-supervisor
+          
+    # #       # Try network reload one more time
+    # #       echo 'Trying network reload again...'
+    # #       ha network reload || true
+    # #     "
+    # #   when: ha_network_reload.rc != 0
+    # #   register: alternative_fixes
+    # #   changed_when: alternative_fixes.rc == 0
+
+    # - name: Check Home Assistant network status
+    #   ansible.builtin.shell: |
+    #     lxc-attach -n {{ home_assistant.lxc_container_name }} -- bash -c "ha network info || echo 'Could not get network info from ha command'"
+    #   register: ha_network_status
+    #   changed_when: false
+    #   failed_when: false
+
+    # # - name: Wait for Home Assistant to fully start
+    # #   ansible.builtin.pause:
+    # #     seconds: 20
+    # #   when: ha_install_result.changed or supervisor_restart.changed
+
+    # - name: Home Assistant installation summary
+    #   ansible.builtin.debug:
+    #     msg: |
+    #       Home Assistant Supervised installation completed.
+    #       Container name: {{ home_assistant.lxc_container_name }}
+    #       Container IP: {{ home_assistant.net.ip }}
+    #       Access Home Assistant at http://{{ home_assistant.net.ip }}:8123
+    #       Home Assistant Supervised installation completed.
+    #       Container name: {{ home_assistant.lxc_container_name }}
+    #       Container IP: {{ home_assistant.net.ip }}
+    #       Access Home Assistant at http://{{ home_assistant.net.ip }}:8123
