@@ -1,0 +1,23 @@
+# Copy this file and remove sample word from the name
+
+homeassistant_lxc:
+  lxc_container_name: homeassistant
+  lxc_storage_pool: default
+  volume_size: 40GB
+  dist: debian
+  arch: amd64
+  release: bookworm
+  timezone: Europe/Istanbul
+  enable_nfs: false
+  enable_docker: true
+  os_agent_version: "1.7.2"
+  os_agent_arch: x86_64
+  net:
+    ip: "10.0.0.5"
+    gateway: "10.0.0.1"
+    netmask: "255.255.0.0"
+    prefix_length: "16"
+  http:
+    use_x_forwarded_for: true
+    trusted_proxy: "10.0.0.2/16"  # Your proxy server's network
+    base_url: https://your.hostname.domain.com
