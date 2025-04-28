@@ -1,0 +1,109 @@
+---
+- name: Set up Home Assistant VM with KVM
+  become: true
+  block:
+    - name: Destroy existing VM if exists
+      command: virsh destroy {{ homeassistant_kvm.vm_name }}
+      ignore_errors: yes
+
+    - name: Undefine existing VM if exists
+      command: virsh undefine {{ homeassistant_kvm.vm_name }}
+      ignore_errors: yes
+    - name: Ensure {{ homeassistant_kvm.path }} directory exists
+      file:
+        path: "{{ homeassistant_kvm.path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: true
+
+    - name: Install required packages
+      apt:
+        name:
+          - libvirt-daemon-system
+          - libvirt-clients
+          - python3-lxml
+          - qemu-kvm
+          - virtinst
+        state: present
+
+    - name: Create data directory
+      file:
+        path: "{{ homeassistant_kvm.data_path }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Check if Home Assistant OS image exists
+      stat:
+        path: "{{ homeassistant_kvm.image_path }}/haos.qcow2"
+      register: haos_image_file
+
+    - name: Download latest Home Assistant OS image
+      ansible.builtin.get_url:
+        url: "https://github.com/home-assistant/operating-system/releases/download/{{ homeassistant_kvm.version }}/haos_ova-{{ homeassistant_kvm.version }}.qcow2.xz"
+        dest: "{{ homeassistant_kvm.image_path }}/haos.qcow2.xz"
+      when: not haos_image_file.stat.exists
+
+    - name: Extract the  image
+      command: unxz -f {{ homeassistant_kvm.image_path }}/haos.qcow2.xz
+      args:
+        creates: "{{ homeassistant_kvm.image_path }}/haos.qcow2"
+      when: not haos_image_file.stat.exists
+    
+    - name: Clean up downloaded file
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items: 
+        - "{{ homeassistant_kvm.image_path }}/haos.qcow2.xz"
+      when: not haos_image_file.stat.exists
+
+    - name: Create VM
+      command: >
+        virt-install
+        --name {{ homeassistant_kvm.vm_name }}
+        --description "Home Assistant OS"
+        --os-variant=generic
+        --memory {{ homeassistant_kvm.memory_mb }}
+        --vcpus {{ homeassistant_kvm.vcpus }}
+        --disk path={{ homeassistant_kvm.image_path }}/haos.qcow2,bus=scsi
+        --controller type=scsi,model=virtio-scsi
+        --graphics none
+        --boot uefi
+        --import
+        --os-variant=generic
+        --network bridge={{ homeassistant_kvm.bridge_interface }}
+        --noautoconsole
+      args:
+        creates: /etc/libvirt/qemu/{{ homeassistant_kvm.vm_name }}.xml
+
+    - name: Enable VM autostart
+      command: virsh autostart {{ homeassistant_kvm.vm_name }}
+
+    - name: Display Home Assistant access information
+      debug:
+        msg: |
+          "VM name is: {{ homeassistant_kvm.vm_name }}"
+          "Image file is: {{ homeassistant_kvm.image_path }}/haos.qcow2"
+
+
+    - name: Ensure VM is running
+      community.libvirt.virt:
+        name: "{{ homeassistant_kvm.vm_name }}"
+        state: running
+
+    - name: Wait for VM to be responsive
+      wait_for:
+        host: "{{ homeassistant_kvm.vm_name }}"
+        port: 8123
+        timeout: 300
+      register: homeassistant_kvm_ready
+      ignore_errors: yes
+
+    - name: Display Home Assistant access information
+      debug:
+        msg: |
+          Home Assistant should be available at:
+          http://{{ homeassistant_kvm.ip }}:8123
+          Check VM IP with: virsh domifaddr {{ homeassistant_kvm.vm_name }}

@@ -1,5 +1,25 @@
 # Copy this file and remove sample word from the name
 
+backup:
+  server_name: my-server
+  webhook:
+    completed:
+      id: -_abcde12345abcde____abcd
+    started:
+      id: -12345abcde_____abcde1234
+  external_drive:
+    uuid: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+    serial: WDC_aaaaaaaa-*#*##**#_WD-************
+  log_dir: "/media/backup/synched/log"
+  target_mount: "/media/backup"
+  tasks:
+    photos:
+      source: "/media/photos"
+      target: "/media/backup/synched"
+    immich_server:
+      source: "/home/rootless/docker/immich/data/immich-server"
+      target: "/media/backup/synched/docker/immich/data"
+
 homeassistant_lxc:
   lxc_container_name: homeassistant
   lxc_storage_pool: default
@@ -21,3 +41,14 @@ homeassistant_lxc:
     use_x_forwarded_for: true
     trusted_proxy: "10.0.0.2/16"  # Your proxy server's network
     base_url: https://your.hostname.domain.com
+
+homeassistant_kvm:
+  vm_name: homeassistant
+  path: /home/vm
+  memory_mb: 4096
+  vcpus: 2
+  disk_size: 32
+  data_path: /var/lib/homeassistant
+  iso_path: /var/lib/libvirt/images
+  bridge_interface: br0
+  ip: 10.0.0.5

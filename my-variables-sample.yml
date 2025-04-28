@@ -42,22 +42,6 @@ users:
       uid: 2000
       keyFile: "/home/local-user-name/.ssh/server-rootless.pub"
 
-
-backup:
-  server_name: my-server
-  external_drive:
-    uuid: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
-    serial: WDC_aaaaaaaa-*#*##**#_WD-************
-  log_dir: "/media/backup/synched/log"
-  target_mount: "/media/backup"
-  tasks:
-    photos:
-      source: "/media/photos"
-      target: "/media/backup/synched"
-    immich_server:
-      source: "/home/rootless/docker/immich/data/immich-server"
-      target: "/media/backup/synched/docker/immich/data"
-
 # vars file for home assistant
 lxc:
   path: /home/lxc

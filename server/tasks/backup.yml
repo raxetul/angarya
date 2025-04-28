@@ -62,6 +62,9 @@
 
           mkdir -p {{ backup.target_mount}}
 
+          # Send start notification to Home Assistant
+          curl -X PUT http://{{ homeassistant_kvm.ip }}:8123/api/webhook/{{ backup.webhook.started.id }}
+
           if ! mount | grep -q "$1 "; then
             # Device not mounted, so mount it
             mount $1 {{ backup.target_mount}} || {
@@ -107,6 +110,9 @@
             cp $LOG {{ backup.log_dir}}
             sync
             umount {{ backup.target_mount}}
+
+            # Send completion notification to Home Assistant
+            curl -X PUT http://{{ homeassistant_kvm.ip }}:8123/api/webhook/{{ backup.webhook.completed.id }}
           fi
 
     - name: Create the udev rule
