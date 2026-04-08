@@ -2,6 +2,9 @@
 - name: Main installation
   hosts: merkez
   roles:
-    # - base
-    - server
-    # - kube
+    - role: base
+      tags: [base]
+    - role: server
+      tags: [server]
+    - role: kube-on-lxc
+      tags: [kube]

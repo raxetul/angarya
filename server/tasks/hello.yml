@@ -1,0 +1,4 @@
+---
+- name: Hello task
+  debug:
+    msg: "Hello from server installation!"

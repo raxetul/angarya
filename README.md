@@ -11,12 +11,23 @@ And also this repo is a button to start doomsday. :supervillain:
 A debian host with SSH key installed to root account.
 
 # Usage
-- Uncomment the part you need in main.yml files
 - Create a my-variables.yml file from my-variables-sample.yml file according to your needs.
 - Run ansible-playbook:
   ``` bash
-  ansible-playbook site.yml --extra-vars "@my-variables.yml" 
+  ansible-playbook site.yml --extra-vars "@my-variables.yml"
   ```
+- Run specific tasks using tags:
+  ``` bash
+  # Run only backup
+  ansible-playbook site.yml --extra-vars "@my-variables.yml" --tags backup
+
+  # Run multiple tasks
+  ansible-playbook site.yml --extra-vars "@my-variables.yml" --tags backup,homeassistant
+
+  # Run everything except specific tasks
+  ansible-playbook site.yml --extra-vars "@my-variables.yml" --skip-tags raid,lxc
+  ```
+- Available tags: `raid`, `samba`, `network`, `lxc`, `docker`, `backup`, `homeassistant`
 
 # Structure
 

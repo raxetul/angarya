@@ -25,4 +25,5 @@
 
 # End of https://www.toptal.com/developers/gitignore/api/ansible,visualstudiocode
 
+**/vars/main.yml
 my-variables.yml

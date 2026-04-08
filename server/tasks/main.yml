@@ -1,23 +1,34 @@
 ---
-# - name: Raid mount task
-#   ansible.builtin.include_tasks: raid.yml
+- name: Hello
+  ansible.builtin.import_tasks: hello.yml
+  tags: [hello]
 
-# - name: Install samba
-#   ansible.builtin.include_tasks: samba.yml
+- name: Raid mount task
+  ansible.builtin.import_tasks: raid.yml
+  tags: [raid]
 
-# - name: Prepare networking
-#   ansible.builtin.include_tasks: network.yml
+- name: Install samba
+  ansible.builtin.import_tasks: samba.yml
+  tags: [samba]
 
-# - name: Install lxc
-#   ansible.builtin.include_tasks: lxc.yml
+- name: Prepare networking
+  ansible.builtin.import_tasks: network.yml
+  tags: [network]
 
-# # - name: Install rootless docker
-#   ansible.builtin.include_tasks: "rootless-docker-installation.yml"
-#   vars:
-#     username: "rootless"
+- name: Install lxc
+  ansible.builtin.import_tasks: lxc.yml
+  tags: [lxc]
+
+- name: Install rootless docker
+  ansible.builtin.import_tasks: rootless-docker-installation.yml
+  vars:
+    username: "rootless"
+  tags: [docker]
 
 - name: Setup Backups
-  ansible.builtin.include_tasks: backup.yml
+  ansible.builtin.import_tasks: backup.yml
+  tags: [backup]
 
 - name: Install home-assistant
-  ansible.builtin.include_tasks: homeassistant-kvm.yml
+  ansible.builtin.import_tasks: homeassistant-kvm.yml
+  tags: [homeassistant]
