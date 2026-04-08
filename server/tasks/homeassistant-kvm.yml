@@ -2,21 +2,21 @@
 - name: Set up Home Assistant VM with KVM
   become: true
   block:
-    - name: Destroy existing VM if exists
-      command: virsh destroy {{ homeassistant_kvm.vm_name }}
-      ignore_errors: yes
+    # - name: Destroy existing VM if exists
+    #   command: virsh destroy {{ homeassistant_kvm.vm_name }}
+    #   ignore_errors: yes
 
-    - name: Undefine existing VM if exists
-      command: virsh undefine {{ homeassistant_kvm.vm_name }}
-      ignore_errors: yes
-    - name: Ensure {{ homeassistant_kvm.path }} directory exists
-      file:
-        path: "{{ homeassistant_kvm.path }}"
-        state: directory
-        mode: '0755'
-        owner: root
-        group: root
-      become: true
+    # - name: Undefine existing VM if exists
+    #   command: virsh undefine {{ homeassistant_kvm.vm_name }}
+    #   ignore_errors: yes
+    # - name: Ensure {{ homeassistant_kvm.path }} directory exists
+    #   file:
+    #     path: "{{ homeassistant_kvm.path }}"
+    #     state: directory
+    #     mode: '0755'
+    #     owner: root
+    #     group: root
+    #   become: true
 
     - name: Install required packages
       apt:
@@ -100,6 +100,8 @@
         timeout: 300
       register: homeassistant_kvm_ready
       ignore_errors: yes
+
+
 
     - name: Display Home Assistant access information
       debug:
