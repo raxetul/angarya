@@ -1,0 +1,90 @@
+#!/bin/bash
+set -uo pipefail
+
+DEVICE="$1"
+MOUNT_TARGET="{{ backup.target_mount }}"
+LOG_DIR="{{ backup.log_dir }}"
+TMP_LOG_DIR="/tmp/backup"
+LOG="$TMP_LOG_DIR/rsync.log"
+SERVER="{{ backup.server_name }}"
+HA_BASE="http://{{ homeassistant_kvm.ip }}:8123/api/webhook"
+MOUNTED_BY_SCRIPT=false
+ERRORS=0
+
+log() {
+  echo "$(date '+%Y-%m-%d--%H-%M-%S') $1" >> "$LOG"
+}
+
+backup_task() {
+  local name="$1"
+  local source="$2"
+  local target="$3"
+  local timestamp
+  timestamp=$(date '+%Y-%m-%d--%H-%M-%S')
+
+  log "[rsync] $name started..."
+  mkdir -p "$(dirname "$target")"
+  if rsync -av --delete \
+    --log-file="$TMP_LOG_DIR/$name-$timestamp.log" \
+    --log-file-format="[%t] %i" \
+    "$source" "$target"; then
+    log "[rsync] $name completed successfully"
+  else
+    log "[rsync] $name FAILED with exit code $?"
+    ERRORS=$((ERRORS + 1))
+  fi
+  cp "$TMP_LOG_DIR/$name-$timestamp.log" "$LOG_DIR/"
+}
+
+cleanup() {
+  local exit_code=$?
+  sync
+  if [ "$MOUNTED_BY_SCRIPT" = true ]; then
+    log "Unmounting $MOUNT_TARGET ..."
+    cp "$LOG" "$LOG_DIR/" 2>/dev/null || true
+    sync
+    umount "$MOUNT_TARGET" 2>/dev/null || log "Warning: umount failed (device may already be unmounted)"
+  fi
+  if [ $exit_code -eq 0 ] && [ $ERRORS -eq 0 ]; then
+    curl -s -X PUT "$HA_BASE/{{ backup.webhook.completed.id }}"
+  else
+    log "Backup failed (exit_code=$exit_code, errors=$ERRORS)"
+    curl -s -X PUT "$HA_BASE/{{ backup.webhook.started.id }}" || true
+  fi
+}
+trap cleanup EXIT
+
+prepare() {
+  mkdir -p "$TMP_LOG_DIR"
+  log "Preparing $SERVER before backup"
+
+  mkdir -p "$MOUNT_TARGET"
+
+  curl -s -X PUT "$HA_BASE/{{ backup.webhook.started.id }}"
+
+  if ! mount | grep -q "$DEVICE "; then
+    mount "$DEVICE" "$MOUNT_TARGET" || {
+      log "Error mounting $DEVICE to $MOUNT_TARGET"
+      exit 1
+    }
+    MOUNTED_BY_SCRIPT=true
+  else
+    log "Device $DEVICE already mounted, continuing"
+  fi
+
+  mkdir -p "$LOG_DIR"
+
+  log "Started $SERVER backup"
+}
+
+prepare
+
+{% for item_name, item_data in backup.tasks.items() %}
+backup_task "{{ item_name }}" "{{ item_data.source }}" "{{ item_data.target }}"
+{% endfor %}
+
+log "Ended $SERVER backup (errors: $ERRORS)"
+
+if [ $ERRORS -gt 0 ]; then
+  exit 1
+fi
