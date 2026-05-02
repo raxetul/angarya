@@ -22,7 +22,8 @@
           Type=oneshot
           TimeoutStartSec=0
           ExecStartPre=/bin/sleep 5
-          ExecStart=/opt/scripts/backup-system.sh /dev/%I
+          ExecStart=/opt/scripts/backup-files.sh /dev/%I
+          ExecStart=/opt/scripts/backup-db.sh /dev/%I
           User=root
           Group=root
 
@@ -40,8 +41,16 @@
 
     - name: Deploy backup script
       template:
-        src: backup-system.sh.j2
-        dest: /opt/scripts/backup-system.sh
+        src: backup-files.sh.j2
+        dest: /opt/scripts/backup-files.sh
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Deploy db backup script
+      template:
+        src: backup-db.sh.j2
+        dest: /opt/scripts/backup-db.sh
         mode: '0755'
         owner: root
         group: root
