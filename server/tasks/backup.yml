@@ -20,6 +20,7 @@
 
           [Service]
           Type=oneshot
+          TimeoutStartSec=0
           ExecStartPre=/bin/sleep 5
           ExecStart=/opt/scripts/backup-system.sh /dev/%I
           User=root
