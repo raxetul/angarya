@@ -19,6 +19,11 @@ backup:
     immich_server:
       source: "/home/rootless/docker/immich/data/immich-server"
       target: "/media/backup/synched/docker/immich/data"
+    nextcloud_data:
+      source: "/home/rootless/docker/nextcloud/data"
+      target: "/media/backup/synched/docker/nextcloud/data"
+      excludes:
+        - "**/backups/**"
 
 homeassistant_lxc:
   lxc_container_name: homeassistant

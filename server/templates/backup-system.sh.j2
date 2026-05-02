@@ -19,12 +19,18 @@ backup_task() {
   local name="$1"
   local source="$2"
   local target="$3"
+  shift 3
+  local excludes=()
+  local e
+  for e in "$@"; do
+    excludes+=(--exclude="$e")
+  done
   local timestamp
   timestamp=$(date '+%Y-%m-%d--%H-%M-%S')
 
   log "[rsync] $name started..."
   mkdir -p "$(dirname "$target")"
-  if rsync -av --delete \
+  if rsync -av --delete "${excludes[@]}" \
     --log-file="$TMP_LOG_DIR/$name-$timestamp.log" \
     --log-file-format="[%t] %i" \
     "$source" "$target"; then
@@ -80,7 +86,8 @@ prepare() {
 prepare
 
 {% for item_name, item_data in backup.tasks.items() %}
-backup_task "{{ item_name }}" "{{ item_data.source }}" "{{ item_data.target }}"
+backup_task "{{ item_name }}" "{{ item_data.source }}" "{{ item_data.target }}"{% for ex in item_data.excludes | default([]) %} "{{ ex }}"{% endfor %}
+
 {% endfor %}
 
 log "Ended $SERVER backup (errors: $ERRORS)"
