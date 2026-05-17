@@ -1,28 +1,29 @@
 ---
-# tasks file for debian
-  - name: Setup cockpit file sharing repo
-    shell: |
-      curl -sSL https://repo.45drives.com/setup | sed 's/apt install/apt-get install/' | sed 's/apt update/apt-get update/' | sed 's/pm_bin=apt/pm_bin=apt-get/' | bash
-    ignore_errors: true
+- name: Install samba and cockpit-file-sharing
+  become: true
+  block:
+    - name: Setup 45drives cockpit file sharing repo
+      ansible.builtin.shell: |
+        set -euo pipefail
+        curl -sSL https://repo.45drives.com/setup \
+          | sed 's/apt install/apt-get install/' \
+          | sed 's/apt update/apt-get update/' \
+          | sed 's/pm_bin=apt/pm_bin=apt-get/' \
+          | bash
+      args:
+        creates: /etc/apt/sources.list.d/45drives.sources
 
-  - name:
-    debug:
-      msg: "Ignore the error above, it is about debian version name detection and cockpit file sharing extension is a web app with any native binaries. 'focal' packages will be installed regardless the version ."
-
-  - name: Install samba and cockpit
-    ansible.builtin.apt:
-      update_cache: true
-      force_apt_get: true
-      pkg:
-        - attr
-        - cockpit
-        - cockpit-file-sharing
-        - cockpit-ws
-        - gawk
-        - nfs-kernel-server
-        - samba
-        - samba-common-bin
-        - winbind
-
-
-# cockpit root login permission
+    - name: Install samba and cockpit
+      ansible.builtin.apt:
+        update_cache: true
+        force_apt_get: true
+        pkg:
+          - attr
+          - cockpit
+          - cockpit-file-sharing
+          - cockpit-ws
+          - gawk
+          - nfs-kernel-server
+          - samba
+          - samba-common-bin
+          - winbind

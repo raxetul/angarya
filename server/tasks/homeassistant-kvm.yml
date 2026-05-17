@@ -19,7 +19,7 @@
     #   become: true
 
     - name: Install required packages
-      apt:
+      ansible.builtin.apt:
         name:
           - libvirt-daemon-system
           - libvirt-clients
@@ -29,13 +29,13 @@
         state: present
 
     - name: Create data directory
-      file:
+      ansible.builtin.file:
         path: "{{ homeassistant_kvm.data_path }}"
         state: directory
         mode: '0755'
-    
+
     - name: Check if Home Assistant OS image exists
-      stat:
+      ansible.builtin.stat:
         path: "{{ homeassistant_kvm.image_path }}/haos.qcow2"
       register: haos_image_file
 
@@ -45,22 +45,20 @@
         dest: "{{ homeassistant_kvm.image_path }}/haos.qcow2.xz"
       when: not haos_image_file.stat.exists
 
-    - name: Extract the  image
-      command: unxz -f {{ homeassistant_kvm.image_path }}/haos.qcow2.xz
+    - name: Extract the image
+      ansible.builtin.command: unxz -f {{ homeassistant_kvm.image_path }}/haos.qcow2.xz
       args:
         creates: "{{ homeassistant_kvm.image_path }}/haos.qcow2"
       when: not haos_image_file.stat.exists
-    
+
     - name: Clean up downloaded file
-      file:
-        path: "{{ item }}"
+      ansible.builtin.file:
+        path: "{{ homeassistant_kvm.image_path }}/haos.qcow2.xz"
         state: absent
-      with_items: 
-        - "{{ homeassistant_kvm.image_path }}/haos.qcow2.xz"
       when: not haos_image_file.stat.exists
 
     - name: Create VM
-      command: >
+      ansible.builtin.command: >
         virt-install
         --name {{ homeassistant_kvm.vm_name }}
         --description "Home Assistant OS"
@@ -72,21 +70,25 @@
         --graphics none
         --boot uefi
         --import
-        --os-variant=generic
         --network bridge={{ homeassistant_kvm.bridge_interface }}
         --noautoconsole
       args:
         creates: /etc/libvirt/qemu/{{ homeassistant_kvm.vm_name }}.xml
 
-    - name: Enable VM autostart
-      command: virsh autostart {{ homeassistant_kvm.vm_name }}
+    - name: Check VM autostart state
+      ansible.builtin.stat:
+        path: /etc/libvirt/qemu/autostart/{{ homeassistant_kvm.vm_name }}.xml
+      register: vm_autostart_link
 
-    - name: Display Home Assistant access information
-      debug:
+    - name: Enable VM autostart
+      ansible.builtin.command: virsh autostart {{ homeassistant_kvm.vm_name }}
+      when: not vm_autostart_link.stat.exists
+
+    - name: Display VM image location
+      ansible.builtin.debug:
         msg: |
           "VM name is: {{ homeassistant_kvm.vm_name }}"
           "Image file is: {{ homeassistant_kvm.image_path }}/haos.qcow2"
-
 
     - name: Ensure VM is running
       community.libvirt.virt:
@@ -94,17 +96,15 @@
         state: running
 
     - name: Wait for VM to be responsive
-      wait_for:
-        host: "{{ homeassistant_kvm.vm_name }}"
+      ansible.builtin.wait_for:
+        host: "{{ homeassistant_kvm.ip }}"
         port: 8123
         timeout: 300
       register: homeassistant_kvm_ready
-      ignore_errors: yes
-
-
+      ignore_errors: true
 
     - name: Display Home Assistant access information
-      debug:
+      ansible.builtin.debug:
         msg: |
           Home Assistant should be available at:
           http://{{ homeassistant_kvm.ip }}:8123

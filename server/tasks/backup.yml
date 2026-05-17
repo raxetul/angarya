@@ -1,16 +1,15 @@
 ---
-
 - name: Setup auto rsync backup on USB disk plug via udev
   become: true
   block:
     - name: Create systemd override directory for systemd-udevd
-      file:
+      ansible.builtin.file:
         path: /etc/systemd/system/systemd-udevd.service.d
         state: directory
         mode: '0755'
 
     - name: Create systemd service for USB backup
-      copy:
+      ansible.builtin.copy:
         dest: /etc/systemd/system/{{ backup.server_name }}-backup@.service
         content: |
           [Unit]
@@ -30,9 +29,10 @@
           [Install]
           WantedBy=dev-%i.device
         mode: '0644'
+      register: backup_service_unit
 
     - name: Ensure /opt/scripts directory exists
-      file:
+      ansible.builtin.file:
         path: /opt/scripts
         state: directory
         mode: '0755'
@@ -40,7 +40,7 @@
         group: root
 
     - name: Deploy backup script
-      template:
+      ansible.builtin.template:
         src: backup-files.sh.j2
         dest: /opt/scripts/backup-files.sh
         mode: '0755'
@@ -48,7 +48,7 @@
         group: root
 
     - name: Deploy db backup script
-      template:
+      ansible.builtin.template:
         src: backup-db.sh.j2
         dest: /opt/scripts/backup-db.sh
         mode: '0755'
@@ -56,16 +56,20 @@
         group: root
 
     - name: Create the udev rule
-      blockinfile:
+      ansible.builtin.blockinfile:
         path: /etc/udev/rules.d/99-{{ backup.server_name }}-usb-rsync-backup.rules
         create: true
         marker: "# {mark} ANSIBLE MANAGED BLOCK - EXTERNAL DISK BACKUP"
         block: |
           ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_SERIAL}=="{{ backup.external_drive.serial }}", ENV{SYSTEMD_WANTS}="{{ backup.server_name }}-backup@%k.service"
+      register: backup_udev_rule
 
     - name: Reload systemd
-      systemd:
+      ansible.builtin.systemd:
         daemon_reload: true
+      when: backup_service_unit.changed
 
     - name: Reload udev rules
-      command: udevadm control --reload-rules
+      ansible.builtin.command: udevadm control --reload-rules
+      when: backup_udev_rule.changed
+      changed_when: false

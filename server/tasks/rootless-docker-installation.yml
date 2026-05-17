@@ -1,18 +1,24 @@
 ---
-- name: Adding docker repository
-  shell: |
+- name: Add docker apt repository
+  ansible.builtin.shell: |
+    set -euo pipefail
     install -m 0755 -d /etc/apt/keyrings
-    rm /etc/apt/keyrings/docker.gpg
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    rm -f /etc/apt/keyrings/docker.gpg
+    curl -fsSL https://download.docker.com/linux/debian/gpg \
+      | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo \
-      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-      tee /etc/apt/sources.list.d/docker.list > /dev/null
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]" \
+      "https://download.docker.com/linux/debian" \
+      "$(. /etc/os-release && echo "$VERSION_CODENAME")" \
+      "stable" \
+      | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  args:
+    creates: /etc/apt/sources.list.d/docker.list
 
-- name: Installing dependencies
-  apt:
-    update_cache: yes
+- name: Install rootless docker dependencies
+  ansible.builtin.apt:
+    update_cache: true
     pkg:
       - dbus-user-session
       - docker-ce-rootless-extras
@@ -23,23 +29,25 @@
 
 - name: Rootless docker installation
   become: true
-  become_user: "{{ username}}"
-  shell: curl -fsSL https://get.docker.com/rootless | sh
+  become_user: "{{ username }}"
+  ansible.builtin.shell: curl -fsSL https://get.docker.com/rootless | sh
+  args:
+    creates: "/home/{{ username }}/bin/dockerd-rootless-setuptool.sh"
 
 - name: Add docker bin path to PATH
   become: true
   become_user: "{{ username }}"
   ansible.builtin.lineinfile:
-    path: /home/{{ username}}/.bashrc
+    path: "/home/{{ username }}/.bashrc"
     regex: "{{ item.regexp }}"
     line: "{{ item.line }}"
   loop:
     - {
         regexp: "^export XDG_RUNTIME_DIR=",
-        line: "export XDG_RUNTIME_DIR=/home/{{ username}}/.docker/run",
+        line: "export XDG_RUNTIME_DIR=/home/{{ username }}/.docker/run",
       }
     - {
-        regexp: "^export PATH=$PATH:$HOME/bin",
+        regexp: '^export PATH=\$PATH:\$HOME/bin',
         line: "export PATH=$PATH:$HOME/bin",
       }
     - {
@@ -49,35 +57,51 @@
 
 - name: Fix dockerd rootless installation script
   become: true
-  become_user: "{{ username}}"
+  become_user: "{{ username }}"
   ansible.builtin.replace:
-    path: /home/{{ username}}/bin/dockerd-rootless-setuptool.sh
+    path: "/home/{{ username }}/bin/dockerd-rootless-setuptool.sh"
     regexp: "unix://\\$.*XDG_RUNTIME_DIR.*/docker.sock"
     replace: "unix:///run/user/$(id -u $(whoami))/docker.sock"
 
-- name: Touch sysctl conf
-  shell: touch /etc/sysctl.d/99-rootless.conf
-
 - name: Generate sysctl conf
-  include_tasks: "subtasks/rootless-sysctl.yml"
-  with_dict: |
-    {{ '{
-        "net.ipv6.conf.all.disable_ipv6" : "1",
-        "net.ipv6.conf.default.disable_ipv6" : "1",
-        "net.ipv6.conf.lo.disable_ipv6" : "1",
-        "net.ipv4.ping_group_range" : "0 2147483647",
-        "net.ipv4.ip_unprivileged_port_start" : "80"
-    }' | from_json }}
+  ansible.builtin.include_tasks: subtasks/rootless-sysctl.yml
+  loop:
+    - {
+        key: "net.ipv6.conf.all.disable_ipv6",
+        value: "1",
+      }
+    - {
+        key: "net.ipv6.conf.default.disable_ipv6",
+        value: "1",
+      }
+    - {
+        key: "net.ipv6.conf.lo.disable_ipv6",
+        value: "1",
+      }
+    - {
+        key: "net.ipv4.ping_group_range",
+        value: "0 2147483647",
+      }
+    - {
+        key: "net.ipv4.ip_unprivileged_port_start",
+        value: "80",
+      }
 
-- name: Start docker user service for the user rootless
+- name: Install and enable rootless docker user service
   become: true
-  become_user: "{{ username}}"
+  become_user: "{{ username }}"
   become_method: machinectl
   ansible.builtin.shell: |
-    /home/{{ username}}/bin/dockerd-rootless-setuptool.sh install
+    /home/{{ username }}/bin/dockerd-rootless-setuptool.sh install
     systemctl enable --user --now docker
+  args:
+    creates: "/home/{{ username }}/.config/systemd/user/docker.service"
 
-- name: Setup rootless docker autostart at login with daemon reload
-  ansible.builtin.shell: |
-    loginctl enable-linger {{ username}}
-    sysctl --system
+- name: Enable lingering for {{ username }}
+  ansible.builtin.command: loginctl enable-linger {{ username }}
+  args:
+    creates: "/var/lib/systemd/linger/{{ username }}"
+
+- name: Apply sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: false

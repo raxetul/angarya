@@ -4,14 +4,13 @@
   become: true
   block:
     - name: Ensure /etc/lxc directory exists
-      file:
+      ansible.builtin.file:
         path: /etc/lxc
         state: directory
         mode: '0755'
         owner: root
         group: root
-      become: true
-        
+
     - name: Check if lxc.conf exists
       ansible.builtin.stat:
         path: /etc/lxc/lxc.conf
@@ -80,31 +79,28 @@
         item.regexp == '^lxc\.lxcpath' and lxc_lxcpath.changed
 
     - name: Ensure LXC_NETWORK is set to {{ lxc.bridge.network }}
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/default/lxc-net
         regexp: '^LXC_NETWORK='
         line: 'LXC_NETWORK="{{ lxc.bridge.network }}"'
         state: present
-        backup: yes
+        backup: true
       register: lxc_config_changed
-      
+
     - name: Set LXC_ADDR to {{ lxc.bridge.ip }}
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/default/lxc-net
         regexp: '^LXC_ADDR='
-        line: 'LXC_ADDR="1{{ lxc.bridge.ip }}"'
+        line: 'LXC_ADDR="{{ lxc.bridge.ip }}"'
         state: present
       register: lxc_addr_changed
 
     - name: Restart LXC networking service if configuration changed
-      systemd:
+      ansible.builtin.systemd:
         name: "lxc-net"
         state: restarted
       when: lxc_config_changed.changed or lxc_addr_changed.changed
-      
-    - name: Display bridge configuration
-      debug:
-        var: bridge_config.stdout_lines
 
     - name: Apply sysctl changes
       ansible.builtin.command: sysctl -p
+      changed_when: false

@@ -1,4 +1,4 @@
 ---
 - name: Hello task
-  debug:
+  ansible.builtin.debug:
     msg: "Hello from server installation!"

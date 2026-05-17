@@ -1,20 +1,20 @@
 ---
-# tasks file for debian
-  - name: Install dependencies
-    ansible.builtin.apt:
-      pkg:
+- name: Install dependencies
+  ansible.builtin.apt:
+    pkg:
       - mdadm
 
-  - name: Search RAID partitions
-    shell: mdadm --assemble --scan --verbose
-    register: mdadm_result
-    failed_when: mdadm_result.rc != 2
+- name: Search RAID partitions
+  ansible.builtin.shell: mdadm --assemble --scan --verbose
+  register: mdadm_result
+  changed_when: mdadm_result.rc == 0
+  failed_when: mdadm_result.rc not in [0, 2]
 
+- name: Add partitions to fstab
+  ansible.builtin.include_tasks: subtasks/fstab.yml
+  loop: "{{ raid_partitions | dict2items }}"
+  when: raid_partitions is defined
 
-  - name: Add partitions to fstab
-    include_tasks: "subtasks/fstab.yml"
-    with_dict: "{{ raid_partitions }}"
-    when: raid_partitions is defined
-
-  - name: Mount all added partitions
-    shell: mount -a
+- name: Mount all added partitions
+  ansible.builtin.command: mount -a
+  changed_when: false
