@@ -8,8 +8,11 @@ Personal collection of Ansible playbooks for installing/configuring:
 ## Entry Points
 
 - `site.yml` — top-level play targeting `merkez` host with role list
-- `my-variables.yml` — user secrets / vars (gitignored), sample at `my-variables-sample.yml`
+- `my-variables.yml` — plaintext user/host vars (gitignored), sample at `my-variables-sample.yml`
+- `my-secrets.yml` — **ansible-vault**-encrypted secrets (gitignored), sample at `my-secrets-sample.yml`.
+  Holds `backup_db_secrets` (per-target DB passwords). Only needed for the `backup` tag with DB targets.
 - Run: `ansible-playbook site.yml --extra-vars "@my-variables.yml"`
+- Run with secrets: add `--extra-vars "@my-secrets.yml" --ask-vault-pass` (or `--vault-password-file`).
 - Tag-scoped run: `--tags <tag>` / `--skip-tags <tag>`
 
 ## Scopes
@@ -35,6 +38,7 @@ Personal collection of Ansible playbooks for installing/configuring:
 - `<role>/tasks/main.yml` — role entry, lists tagged subtask imports
 - `<role>/vars/main.yml` — role-scoped vars
 - `my-variables-sample.yml` — declared user-provided vars
+- `my-secrets-sample.yml` — declared vault-encrypted secrets (e.g. `backup_db_secrets`)
 - `README.md` — human-facing usage
 
 ## Where to read more
