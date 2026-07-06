@@ -1,5 +1,9 @@
 # Project: Angarya — Ansible Installations
 
+**Project type:** personal (home server / homelab). Skip Büyütech work-only
+conventions — task templates, ASPICE/automotive-compliance framing, "customer"
+assumptions. General safety and security practices still apply.
+
 Personal collection of Ansible playbooks for installing/configuring:
 - **server** — physical server (RAID, samba, networking, lxc, rootless docker, backup, home-assistant kvm)
 - **kube-on-lxc** — kubernetes cluster running inside LXC containers
