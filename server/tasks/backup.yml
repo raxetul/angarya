@@ -31,7 +31,7 @@
         state: present
         update_cache: true
         cache_valid_time: 3600
-      when: (backup.db.targets | default({})) | length > 0
+      when: (postgresql | default({})) | length > 0
 
     - name: Ensure /etc/credstore exists
       ansible.builtin.file:

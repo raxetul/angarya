@@ -26,26 +26,28 @@ backup:
       target: "/media/backup/synched/docker/nextcloud/data"
       excludes:
         - "**/backups/**"
-  db:
-    subdir: "postgres"
-    targets:
-      example_main:
-        host: 10.0.0.10
-        port: 5432
-        user: backup_user
-        dbname: production
-        format: custom          # custom | plain | tar | directory
-        extra_args:
-          - "--no-owner"
-          - "--no-acl"
-      example_analytics:
-        host: 10.0.0.11
-        port: 5432
-        user: backup_user
-        dbname: analytics
-        format: custom
-  # Passwords for each backup.db.targets key live in an ansible-vault file
-  # under the var name `backup_db_secrets`. See my-secrets-sample.yml at repo root.
+
+# PostgreSQL servers/applications to back up. Each key is a server name and maps
+# to its connection details. The DB backup runs pg_dump once per entry and writes
+# <name>-<timestamp>.<ext> under "{{ backup.target_mount }}/postgres".
+# Passwords for each key live in an ansible-vault file under the var name
+# `postgresql_secrets` (keys MUST match). See my-secrets-sample.yml at repo root.
+postgresql:
+  immich:
+    host: 10.0.0.10
+    port: 5432
+    user: immich
+    dbname: immich
+    format: custom            # custom | plain | tar | directory
+    extra_args:
+      - "--no-owner"
+      - "--no-acl"
+  nextcloud:
+    host: 10.0.0.11
+    port: 5432
+    user: nextcloud
+    dbname: nextcloud
+    format: custom
 
 homeassistant_lxc:
   lxc_container_name: homeassistant

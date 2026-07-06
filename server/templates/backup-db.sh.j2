@@ -6,7 +6,7 @@ LOG_DIR="{{ backup.log_dir }}"
 TMP_LOG_DIR="/tmp/backup"
 LOG="$TMP_LOG_DIR/db-dump.log"
 SERVER="{{ backup.server_name }}"
-DB_SUBDIR="{{ backup.db.subdir | default('postgres') }}"
+DB_SUBDIR="{{ backup.db_subdir | default('postgres') }}"
 
 # systemd LoadCredential=pgpass:... exposes the file at $CREDENTIALS_DIRECTORY/pgpass
 # (mode 0400, readable only by this unit invocation). libpq picks it up via PGPASSFILE.
@@ -137,7 +137,7 @@ prepare() {
 
 prepare
 
-{% for db_name, db in (backup.db.targets | default({})).items() %}
+{% for db_name, db in (postgresql | default({})).items() %}
 dump_db \
   "{{ db_name }}" \
   "{{ db.host }}" \

@@ -188,12 +188,12 @@ live in plaintext) go into a separate vault-encrypted file: `my-secrets.yml`.
 Currently just the DB password map for the backup feature:
 
 ```yaml
-backup_db_secrets:
-  example_main: "<password for backup_user on production DB>"
-  example_analytics: "<password for backup_user on analytics DB>"
+postgresql_secrets:
+  immich: "<password for the immich DB user>"
+  nextcloud: "<password for the nextcloud DB user>"
 ```
 
-Keys here must match the keys under `backup.db.targets` in
+Keys here must match the keys under the top-level `postgresql` map in
 `server/vars/main.yml`. See `my-secrets-sample.yml` for the template.
 
 `my-secrets.yml` is in `.gitignore`. If you want to commit the encrypted file so
@@ -224,7 +224,7 @@ backup-server.sh  (orchestrator)
   │  mount the disk
   │  fire HA webhook: started
   ├──► backup-files.sh <mount>   (rsync each backup.tasks entry)
-  ├──► backup-db.sh    <mount>   (pg_dump each backup.db.targets entry + log row counts)
+  ├──► backup-db.sh    <mount>   (pg_dump each `postgresql` server entry + log row counts)
   │  unmount the disk
   │  fire HA webhook: completed / has_error
 ```
@@ -255,23 +255,28 @@ backup:
       source: "/home/rootless/docker/nextcloud/data"
       target: "/media/backup/synched/docker/nextcloud/data"
       excludes: ["**/backups/**"]
-  db:
-    subdir: "postgres"                    # dumps go to <target_mount>/<subdir>/
-    targets:
-      example_main:
-        host: 10.0.0.10
-        port: 5432
-        user: backup_user
-        dbname: production
-        format: custom                    # custom | plain | tar | directory
-        extra_args: ["--no-owner", "--no-acl"]
+  # db_subdir: "postgres"                 # optional; dumps go to <target_mount>/<db_subdir>/
 ```
 
-In `my-secrets.yml` (vault-encrypted), one password per `backup.db.targets` key:
+DB servers live in a separate top-level `postgresql` map (server name →
+connection details). `pg_dump` runs once per entry:
 
 ```yaml
-backup_db_secrets:
-  example_main: "..."
+postgresql:
+  immich:
+    host: 10.0.0.10
+    port: 5432
+    user: immich
+    dbname: immich
+    format: custom                        # custom | plain | tar | directory
+    extra_args: ["--no-owner", "--no-acl"]
+```
+
+In `my-secrets.yml` (vault-encrypted), one password per `postgresql` key:
+
+```yaml
+postgresql_secrets:
+  immich: "..."
 ```
 
 ### Where credentials live on the host
