@@ -1,4 +1,152 @@
 #!/bin/bash
 set -uo pipefail
 
-echo "DB backup placeholder - not implemented yet"
+MOUNT_TARGET="$1"
+LOG_DIR="{{ backup.log_dir }}"
+TMP_LOG_DIR="/tmp/backup"
+LOG="$TMP_LOG_DIR/db-dump.log"
+SERVER="{{ backup.server_name }}"
+DB_SUBDIR="{{ backup.db.subdir | default('postgres') }}"
+
+# systemd LoadCredential=pgpass:... exposes the file at $CREDENTIALS_DIRECTORY/pgpass
+# (mode 0400, readable only by this unit invocation). libpq picks it up via PGPASSFILE.
+export PGPASSFILE="${CREDENTIALS_DIRECTORY:-/run/credentials/MISSING}/pgpass"
+
+HAS_ERRORS=false
+
+log() {
+  echo "$(date '+%Y-%m-%d--%H-%M-%S') $1" >> "$LOG"
+}
+
+log_table_stats() {
+  local host="$1" port="$2" user="$3" dbname="$4"
+  local stats_query
+  stats_query="SELECT schemaname || '.' || relname, n_live_tup
+               FROM pg_stat_user_tables
+               ORDER BY schemaname, relname;"
+  local rows
+  if ! rows=$(psql \
+        --host="$host" --port="$port" --username="$user" --dbname="$dbname" \
+        --no-align --tuples-only --no-psqlrc --field-separator=$'\t' \
+        --command="$stats_query" 2>/dev/null); then
+    log "[stats] $dbname: psql failed to fetch table stats (continuing)"
+    return 1
+  fi
+  local count=0
+  if [ -n "$rows" ]; then
+    count=$(printf '%s\n' "$rows" | grep -c $'\t' || true)
+  fi
+  log "[stats] $dbname: $count user tables (row counts via pg_stat_user_tables.n_live_tup; approximate)"
+  while IFS=$'\t' read -r tbl rc; do
+    [ -z "$tbl" ] && continue
+    log "$(printf '[stats]   %-50s %12s rows' "$tbl" "$rc")"
+  done <<< "$rows"
+}
+
+dump_db() {
+  local name="$1"
+  local host="$2"
+  local port="$3"
+  local user="$4"
+  local dbname="$5"
+  local format="$6"
+  shift 6
+  local extra=("$@")
+
+  local ext
+  case "$format" in
+    custom)    ext="dump" ;;
+    plain)     ext="sql" ;;
+    tar)       ext="tar" ;;
+    directory) ext="dir" ;;
+    *)         ext="dump" ;;
+  esac
+
+  local timestamp
+  timestamp=$(date '+%Y-%m-%d--%H-%M-%S')
+
+  local target_dir="$MOUNT_TARGET/$DB_SUBDIR"
+  mkdir -p "$target_dir"
+  local out="$target_dir/${name}-${timestamp}.${ext}"
+
+  local task_log="$TMP_LOG_DIR/db-${name}-${timestamp}.log"
+  local err_log="$TMP_LOG_DIR/db-${name}-error-${timestamp}.log"
+
+  log "[pg_dump] $name started (host=$host port=$port db=$dbname format=$format)"
+  log_table_stats "$host" "$port" "$user" "$dbname" || true
+
+  if pg_dump \
+      --host="$host" \
+      --port="$port" \
+      --username="$user" \
+      --dbname="$dbname" \
+      --format="$format" \
+      --file="$out" \
+      --verbose \
+      "${extra[@]}" \
+      >"$task_log" 2>"$err_log"; then
+    local sz
+    sz=$(stat -c%s "$out" 2>/dev/null || echo 0)
+    log "[pg_dump] $name -> $out OK (${sz} bytes)"
+    rm -f "$err_log"
+  else
+    local rc=$?
+    HAS_ERRORS=true
+    if [ -s "$err_log" ]; then
+      local err_count
+      err_count=$(wc -l < "$err_log")
+      echo "TOTAL ERRORS: $err_count" >> "$err_log"
+      log "[pg_dump] $name FAILED rc=$rc, $err_count error lines (see $err_log)"
+      cp "$err_log" "$LOG_DIR/" 2>/dev/null || true
+    else
+      rm -f "$err_log"
+      log "[pg_dump] $name FAILED rc=$rc (no stderr output)"
+    fi
+  fi
+  cp "$task_log" "$LOG_DIR/" 2>/dev/null || true
+}
+
+cleanup() {
+  local exit_code=$?
+  cp "$LOG" "$LOG_DIR/" 2>/dev/null || true
+  if [ "$HAS_ERRORS" = true ] && [ "$exit_code" -eq 0 ]; then
+    exit 1
+  fi
+  exit "$exit_code"
+}
+trap cleanup EXIT
+
+prepare() {
+  mkdir -p "$TMP_LOG_DIR"
+  log "Preparing $SERVER DB backup"
+
+  if [ ! -r "$PGPASSFILE" ]; then
+    log "ERROR: PGPASSFILE not readable at $PGPASSFILE."
+    log "       The unit must declare: LoadCredential=pgpass:/etc/credstore/pgpass-$SERVER"
+    exit 1
+  fi
+
+  if ! mountpoint -q "$MOUNT_TARGET"; then
+    log "ERROR: $MOUNT_TARGET is not a mountpoint"
+    exit 1
+  fi
+
+  mkdir -p "$LOG_DIR" "$MOUNT_TARGET/$DB_SUBDIR"
+  log "Started $SERVER DB backup"
+}
+
+prepare
+
+{% for db_name, db in (backup.db.targets | default({})).items() %}
+dump_db \
+  "{{ db_name }}" \
+  "{{ db.host }}" \
+  "{{ db.port | default(5432) }}" \
+  "{{ db.user }}" \
+  "{{ db.dbname }}" \
+  "{{ db.format | default('custom') }}"{% for arg in db.extra_args | default([]) %} \
+  "{{ arg }}"{% endfor %}
+
+{% endfor %}
+
+log "Ended $SERVER DB backup"

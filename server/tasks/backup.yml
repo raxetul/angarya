@@ -9,27 +9,13 @@
         mode: '0755'
 
     - name: Create systemd service for USB backup
-      ansible.builtin.copy:
+      ansible.builtin.template:
+        src: backup-server.service.j2
         dest: /etc/systemd/system/{{ backup.server_name }}-backup@.service
-        content: |
-          [Unit]
-          Description=Backup to external drive %i
-          After=dev-%i.device
-          BindsTo=dev-%i.device
-
-          [Service]
-          Type=oneshot
-          TimeoutStartSec=0
-          ExecStartPre=/bin/sleep 5
-          ExecStart=/opt/scripts/backup-files.sh /dev/%I
-          ExecStart=/opt/scripts/backup-db.sh /dev/%I
-          User=root
-          Group=root
-
-          [Install]
-          WantedBy=dev-%i.device
         mode: '0644'
-      register: backup_service_unit
+        owner: root
+        group: root
+      notify: Reload systemd
 
     - name: Ensure /opt/scripts directory exists
       ansible.builtin.file:
@@ -39,7 +25,32 @@
         owner: root
         group: root
 
-    - name: Deploy backup script
+    - name: Ensure /etc/credstore exists
+      ansible.builtin.file:
+        path: /etc/credstore
+        state: directory
+        mode: '0700'
+        owner: root
+        group: root
+
+    - name: Render pgpass credstore for DB backup
+      ansible.builtin.template:
+        src: pgpass.j2
+        dest: /etc/credstore/pgpass-{{ backup.server_name }}
+        mode: '0400'
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Deploy backup orchestrator script
+      ansible.builtin.template:
+        src: backup-server.sh.j2
+        dest: /opt/scripts/backup-server.sh
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Deploy files backup script
       ansible.builtin.template:
         src: backup-files.sh.j2
         dest: /opt/scripts/backup-files.sh
@@ -56,20 +67,10 @@
         group: root
 
     - name: Create the udev rule
-      ansible.builtin.blockinfile:
-        path: /etc/udev/rules.d/99-{{ backup.server_name }}-usb-rsync-backup.rules
-        create: true
-        marker: "# {mark} ANSIBLE MANAGED BLOCK - EXTERNAL DISK BACKUP"
-        block: |
-          ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_SERIAL}=="{{ backup.external_drive.serial }}", ENV{SYSTEMD_WANTS}="{{ backup.server_name }}-backup@%k.service"
-      register: backup_udev_rule
-
-    - name: Reload systemd
-      ansible.builtin.systemd:
-        daemon_reload: true
-      when: backup_service_unit.changed
-
-    - name: Reload udev rules
-      ansible.builtin.command: udevadm control --reload-rules
-      when: backup_udev_rule.changed
-      changed_when: false
+      ansible.builtin.template:
+        src: usb-rsync-backup.rules.j2
+        dest: /etc/udev/rules.d/99-{{ backup.server_name }}-usb-rsync-backup.rules
+        mode: '0644'
+        owner: root
+        group: root
+      notify: Reload udev rules

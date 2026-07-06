@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+# Trigger the {{ backup.server_name }}-backup@.service when the known external
+# drive partition is plugged in.
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_SERIAL}=="{{ backup.external_drive.serial }}", ENV{SYSTEMD_WANTS}="{{ backup.server_name }}-backup@%k.service"

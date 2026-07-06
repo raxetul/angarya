@@ -1,0 +1,16 @@
+[Unit]
+Description=Backup to external drive %i
+After=dev-%i.device
+BindsTo=dev-%i.device
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+LoadCredential=pgpass:/etc/credstore/pgpass-{{ backup.server_name }}
+ExecStartPre=/bin/sleep 5
+ExecStart=/opt/scripts/backup-server.sh /dev/%I
+User=root
+Group=root
+
+[Install]
+WantedBy=dev-%i.device

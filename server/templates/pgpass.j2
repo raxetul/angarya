@@ -1,0 +1,5 @@
+{# Rendered into /etc/credstore/pgpass-<server>, exposed by systemd LoadCredential= as PGPASSFILE.
+   Format: hostname:port:database:username:password — read natively by libpq. #}
+{% for name, db in (backup.db.targets | default({})).items() -%}
+{{ db.host }}:{{ db.port | default(5432) }}:{{ db.dbname }}:{{ db.user }}:{{ backup_db_secrets[name] }}
+{% endfor %}

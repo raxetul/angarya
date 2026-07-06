@@ -7,6 +7,8 @@ backup:
       id: -_abcde12345abcde____abcd
     started:
       id: -12345abcde_____abcde1234
+    has_error:
+      id: -fedcba98765fedcba____fed
   external_drive:
     uuid: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
     serial: WDC_aaaaaaaa-*#*##**#_WD-************
@@ -24,6 +26,26 @@ backup:
       target: "/media/backup/synched/docker/nextcloud/data"
       excludes:
         - "**/backups/**"
+  db:
+    subdir: "postgres"
+    targets:
+      example_main:
+        host: 10.0.0.10
+        port: 5432
+        user: backup_user
+        dbname: production
+        format: custom          # custom | plain | tar | directory
+        extra_args:
+          - "--no-owner"
+          - "--no-acl"
+      example_analytics:
+        host: 10.0.0.11
+        port: 5432
+        user: backup_user
+        dbname: analytics
+        format: custom
+  # Passwords for each backup.db.targets key live in an ansible-vault file
+  # under the var name `backup_db_secrets`. See my-secrets-sample.yml at repo root.
 
 homeassistant_lxc:
   lxc_container_name: homeassistant

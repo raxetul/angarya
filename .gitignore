@@ -27,3 +27,4 @@
 
 **/vars/main.yml
 my-variables.yml
+my-secrets.yml
