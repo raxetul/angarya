@@ -32,16 +32,27 @@ backup:
 # <name>-<timestamp>.<ext> under "{{ backup.target_mount }}/postgres".
 # Passwords for each key live in an ansible-vault file under the var name
 # `postgresql_secrets` (keys MUST match). See my-secrets-sample.yml at repo root.
+#
+# Per-target fields:
+#   format:    custom | plain | tar | directory        (default custom)
+#   compress:  true -> gzip the dump to *.sql.gz        (plain format only)
+#   extra_args: passed verbatim to pg_dump. NOTE: --clean/--if-exists are
+#              plain-format only; for archive formats the restore performs clean.
+#
+# immich uses the VectorChord (vchord) extension. Its docs recommend a
+# plain-format `pg_dump --clean --if-exists`, gzipped, and restoring into a
+# matching immich version. Verify the exact procedure for your immich version.
 postgresql:
   immich:
     host: 10.0.0.10
     port: 5432
     user: immich
     dbname: immich
-    format: custom            # custom | plain | tar | directory
+    format: plain             # immich recommends plain-format pg_dump
+    compress: true            # -> immich-<timestamp>.sql.gz
     extra_args:
-      - "--no-owner"
-      - "--no-acl"
+      - "--clean"
+      - "--if-exists"
   nextcloud:
     host: 10.0.0.11
     port: 5432

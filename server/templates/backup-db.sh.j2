@@ -50,7 +50,8 @@ dump_db() {
   local user="$4"
   local dbname="$5"
   local format="$6"
-  shift 6
+  local compress="$7"
+  shift 7
   local extra=("$@")
 
   local ext
@@ -61,6 +62,13 @@ dump_db() {
     directory) ext="dir" ;;
     *)         ext="dump" ;;
   esac
+  # gzip only applies to plain-text output; the archive formats are already
+  # compressed, so compress is forced off for them.
+  if [ "$format" = "plain" ] && [ "$compress" = "true" ]; then
+    ext="sql.gz"
+  else
+    compress=false
+  fi
 
   local timestamp
   timestamp=$(date '+%Y-%m-%d--%H-%M-%S')
@@ -72,25 +80,36 @@ dump_db() {
   local task_log="$TMP_LOG_DIR/db-${name}-${timestamp}.log"
   local err_log="$TMP_LOG_DIR/db-${name}-error-${timestamp}.log"
 
-  log "[pg_dump] $name started (host=$host port=$port db=$dbname format=$format)"
+  log "[pg_dump] $name started (host=$host port=$port db=$dbname format=$format compress=$compress)"
   log_table_stats "$host" "$port" "$user" "$dbname" || true
 
-  if pg_dump \
-      --host="$host" \
-      --port="$port" \
-      --username="$user" \
-      --dbname="$dbname" \
-      --format="$format" \
-      --file="$out" \
-      --verbose \
-      "${extra[@]}" \
-      >"$task_log" 2>"$err_log"; then
+  local ok=true rc=0
+  if [ "$compress" = "true" ]; then
+    # plain SQL streamed through gzip; pipefail propagates a pg_dump failure
+    if pg_dump \
+        --host="$host" --port="$port" --username="$user" --dbname="$dbname" \
+        --format=plain --verbose "${extra[@]}" 2>"$err_log" | gzip -c >"$out"; then
+      :
+    else
+      rc=$?; ok=false
+    fi
+  else
+    if pg_dump \
+        --host="$host" --port="$port" --username="$user" --dbname="$dbname" \
+        --format="$format" --file="$out" --verbose "${extra[@]}" \
+        >"$task_log" 2>"$err_log"; then
+      :
+    else
+      rc=$?; ok=false
+    fi
+  fi
+
+  if [ "$ok" = true ]; then
     local sz
     sz=$(stat -c%s "$out" 2>/dev/null || echo 0)
     log "[pg_dump] $name -> $out OK (${sz} bytes)"
     rm -f "$err_log"
   else
-    local rc=$?
     HAS_ERRORS=true
     if [ -s "$err_log" ]; then
       local err_count
@@ -144,7 +163,8 @@ dump_db \
   "{{ db.port | default(5432) }}" \
   "{{ db.user }}" \
   "{{ db.dbname }}" \
-  "{{ db.format | default('custom') }}"{% for arg in db.extra_args | default([]) %} \
+  "{{ db.format | default('custom') }}" \
+  "{{ 'true' if db.compress | default(false) else 'false' }}"{% for arg in db.extra_args | default([]) %} \
   "{{ arg }}"{% endfor %}
 
 {% endfor %}

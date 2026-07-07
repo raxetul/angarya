@@ -263,14 +263,31 @@ connection details). `pg_dump` runs once per entry:
 
 ```yaml
 postgresql:
-  immich:
+  immich:                                 # extension DB (VectorChord)
     host: 10.0.0.10
     port: 5432
     user: immich
     dbname: immich
-    format: custom                        # custom | plain | tar | directory
-    extra_args: ["--no-owner", "--no-acl"]
+    format: plain                         # custom | plain | tar | directory
+    compress: true                        # gzip -> immich-<ts>.sql.gz (plain only)
+    extra_args: ["--clean", "--if-exists"]
+  nextcloud:
+    host: 10.0.0.11
+    port: 5432
+    user: nextcloud
+    dbname: nextcloud
+    format: custom
 ```
+
+`--clean`/`--if-exists` are plain-format options; for archive formats
+(`custom`/`tar`/`directory`) the restore performs the clean instead.
+
+> **Extension databases (immich).** immich uses the `vchord` extension, and a
+> naive dump can restore poorly. immich's docs recommend a plain-format
+> `pg_dump --clean --if-exists`, gzipped, restored into a **matching immich
+> version** (cross-version restores need migrations). The settings above follow
+> that shape — **verify the exact procedure for your immich version**, and use
+> `scripts/verify-dump.sh` to confirm each dump actually restores.
 
 In `my-secrets.yml` (vault-encrypted), one password per `postgresql` key:
 
